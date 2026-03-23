@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { loadSettings, saveSettings, type GameSettings } from "@/lib/settings";
+import { startMusic, stopMusic } from "@/lib/music";
 import { resetProgress, totalStars, loadProgress } from "@/lib/levels";
 import { loadAdStats } from "@/lib/ads";
 import { loadGameStats, getFavoriteColor, formatTimePlayed } from "@/lib/gameStats";
@@ -136,6 +137,10 @@ export default function SettingsScreen({ onBack, onWatchAdForCoins }: Props) {
     const next = { ...settings, [key]: val };
     setSettings(next);
     saveSettings(next);
+    if (key === "music") {
+      if (val) startMusic();
+      else stopMusic(true);
+    }
   }
 
   function handleReset() {

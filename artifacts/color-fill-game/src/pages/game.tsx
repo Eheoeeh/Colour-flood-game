@@ -790,11 +790,20 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
             </div>
           ))}
 
-          {/* ── WIN overlay ── */}
+          {/* ── WIN overlay (fixed full-screen so nothing clips) ── */}
           {won && winData && (
-            <div style={overlayS}>
+            <div style={{
+              position: "fixed", inset: 0, zIndex: 9999,
+              backgroundColor: "rgba(15,15,26,0.96)",
+              backdropFilter: "blur(12px)",
+              display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center",
+              overflowY: "auto",
+              padding: "16px 20px",
+              gap: "10px",
+            }}>
               {confetti.length > 0 && (
-                <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
+                <div style={{ position: "fixed", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 0 }}>
                   {confetti.map(p => (
                     <div key={p.id} className="confetti-fall" style={{
                       position: "absolute", left: `${p.x}%`, top: "-12px",
@@ -806,44 +815,56 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
                   ))}
                 </div>
               )}
+
+              {/* Title */}
               <div style={{ textAlign: "center", position: "relative", zIndex: 1 }}>
-                <div style={{ fontSize: "24px", fontWeight: 900, letterSpacing: "-0.8px", background: "linear-gradient(135deg, #F1C40F 0%, #E67E22 50%, #F1C40F 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text", marginBottom: "10px" }}>
+                <div style={{ fontSize: "22px", fontWeight: 900, letterSpacing: "-0.6px", background: "linear-gradient(135deg, #F1C40F 0%, #E67E22 50%, #F1C40F 100%)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text", marginBottom: "8px" }}>
                   {isLevelMode ? `Level ${levelNum} Complete!` : "You Win!"}
                 </div>
-                <div style={{ display: "flex", gap: "6px", justifyContent: "center", marginBottom: "10px" }}>
+
+                {/* Stars */}
+                <div style={{ display: "flex", gap: "4px", justifyContent: "center", marginBottom: "8px" }}>
                   {[1, 2, 3].map(i => (
-                    <span key={i} className="star" style={{ fontSize: "34px", display: "inline-block", opacity: i <= winData.stars ? 1 : 0.18, animationDelay: `${(i - 1) * 0.2}s`, filter: i <= winData.stars ? "drop-shadow(0 0 8px #F1C40F)" : "none" }}>⭐</span>
+                    <span key={i} className="star" style={{ fontSize: "42px", display: "inline-block", opacity: i <= winData.stars ? 1 : 0.18, animationDelay: `${(i - 1) * 0.2}s`, filter: i <= winData.stars ? "drop-shadow(0 0 8px #F1C40F)" : "none" }}>⭐</span>
                   ))}
                 </div>
+
                 {winData.isNewBest && (
-                  <div style={{ display: "inline-block", marginBottom: "8px", background: "linear-gradient(135deg, #F1C40F, #E67E22)", color: "#0F0F1A", fontSize: "11px", fontWeight: 800, borderRadius: "99px", padding: "4px 12px", letterSpacing: "0.6px", boxShadow: "0 0 16px rgba(241,196,15,0.6)" }}>
+                  <div style={{ display: "inline-block", marginBottom: "8px", background: "linear-gradient(135deg, #F1C40F, #E67E22)", color: "#0F0F1A", fontSize: "11px", fontWeight: 800, borderRadius: "99px", padding: "3px 12px", letterSpacing: "0.6px", boxShadow: "0 0 14px rgba(241,196,15,0.6)" }}>
                     ✦ NEW BEST!
                   </div>
                 )}
-                <div style={{ display: "flex", gap: "20px", justifyContent: "center", marginBottom: "8px" }}>
+
+                {/* Score / Best */}
+                <div style={{ display: "flex", gap: "24px", justifyContent: "center", marginBottom: "6px" }}>
                   <div style={{ textAlign: "center" }}>
-                    <div style={{ color: "#F1C40F", fontSize: "22px", fontWeight: 800 }}>{winData.score.toLocaleString()}</div>
+                    <div style={{ color: "#F1C40F", fontSize: "20px", fontWeight: 800 }}>{winData.score.toLocaleString()}</div>
                     <div style={{ color: "#5555AA", fontSize: "10px" }}>Score</div>
                   </div>
                   <div style={{ width: "1px", backgroundColor: "rgba(255,255,255,0.1)" }} />
                   <div style={{ textAlign: "center" }}>
-                    <div style={{ color: "#8888CC", fontSize: "22px", fontWeight: 700 }}>{(winData.isNewBest ? winData.score : winData.prevBest).toLocaleString()}</div>
+                    <div style={{ color: "#8888CC", fontSize: "20px", fontWeight: 700 }}>{(winData.isNewBest ? winData.score : winData.prevBest).toLocaleString()}</div>
                     <div style={{ color: "#5555AA", fontSize: "10px" }}>Best</div>
                   </div>
                 </div>
-                <div style={{ color: "#5555AA", fontSize: "11px", display: "flex", gap: "14px", justifyContent: "center", marginBottom: "10px" }}>
+
+                {/* Time / moves */}
+                <div style={{ color: "#5555AA", fontSize: "11px", display: "flex", gap: "14px", justifyContent: "center", marginBottom: "8px" }}>
                   <span>⏱ {winData.timeTaken}s</span>
                   <span>🎯 {winData.movesUsed} moves</span>
                 </div>
+
                 {/* Coins earned */}
-                <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", backgroundColor: "rgba(241,196,15,0.12)", border: "1px solid rgba(241,196,15,0.3)", borderRadius: "99px", padding: "5px 14px", marginBottom: "4px" }}>
-                  <span style={{ fontSize: "14px" }}>🪙</span>
-                  <span style={{ color: "#F1C40F", fontSize: "14px", fontWeight: 700 }}>+{winData.coinsEarned} coins earned!</span>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", backgroundColor: "rgba(241,196,15,0.12)", border: "1px solid rgba(241,196,15,0.3)", borderRadius: "99px", padding: "4px 14px" }}>
+                  <span style={{ fontSize: "13px" }}>🪙</span>
+                  <span style={{ color: "#F1C40F", fontSize: "13px", fontWeight: 700 }}>+{winData.coinsEarned} coins earned!</span>
                 </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", maxWidth: "200px", position: "relative", zIndex: 1 }}>
+
+              {/* Buttons */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", maxWidth: "210px", position: "relative", zIndex: 1 }}>
                 {isLevelMode && levelNum! < TOTAL_LEVELS && (
-                  <button onClick={onNextLevel} style={{ background: "linear-gradient(135deg, #2ECC71, #27AE60)", color: "#fff", border: "none", borderRadius: "12px", padding: "13px 0", fontSize: "16px", fontWeight: 700, cursor: "pointer", width: "100%", boxShadow: "0 6px 20px rgba(46,204,113,0.4)" }}>
+                  <button onClick={onNextLevel} style={{ background: "linear-gradient(135deg, #2ECC71, #27AE60)", color: "#fff", border: "none", borderRadius: "12px", padding: "11px 0", fontSize: "15px", fontWeight: 700, cursor: "pointer", width: "100%", boxShadow: "0 6px 18px rgba(46,204,113,0.4)", minHeight: 48 }}>
                     Next Level →
                   </button>
                 )}

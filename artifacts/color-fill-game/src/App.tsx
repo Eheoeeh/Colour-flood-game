@@ -6,6 +6,8 @@ import SettingsScreen from "@/pages/SettingsScreen";
 import AdOverlay from "@/components/AdOverlay";
 import SplashScreen from "@/components/SplashScreen";
 import type { AdType } from "@/components/AdOverlay";
+import { startMusic, stopMusic } from "@/lib/music";
+import { loadSettings } from "@/lib/settings";
 import {
   loadProgress,
   saveProgress,
@@ -41,6 +43,24 @@ export default function App() {
   useEffect(() => {
     incrementSessionCount();
   }, []);
+
+  // Start music once splash is done
+  useEffect(() => {
+    if (!splashDone) return;
+    const settings = loadSettings();
+    if (settings.music) startMusic();
+    return () => stopMusic(false);
+  }, [splashDone]);
+
+  // Pause music during ads, resume after
+  useEffect(() => {
+    if (adRequest) {
+      stopMusic(true);
+    } else if (splashDone) {
+      const settings = loadSettings();
+      if (settings.music) startMusic();
+    }
+  }, [adRequest, splashDone]);
 
   // ── Interstitial ─────────────────────────────────────────────────────────
   const showInterstitialAd = useCallback((callback: () => void) => {
