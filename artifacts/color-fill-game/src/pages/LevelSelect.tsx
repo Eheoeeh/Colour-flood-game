@@ -44,7 +44,7 @@ export default function LevelSelect({ progress, onSelectLevel, onBack }: Props) 
   ] as const;
 
   return (
-    <div style={rootS}>
+    <div className="screen-enter" style={rootS}>
       {/* Header */}
       <div style={headerS}>
         <button onClick={onBack} style={backBtnS}>← Back</button>

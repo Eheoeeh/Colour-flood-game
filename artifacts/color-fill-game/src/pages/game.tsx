@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type { CSSProperties } from "react";
 import { TOTAL_LEVELS } from "@/lib/levels";
+import { loadSettings } from "@/lib/settings";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GAP = 1;
@@ -8,6 +9,17 @@ const WAVE_MS = 18;
 const PULSE_MS = 130;
 const BASE_COLORS = ["#E74C3C", "#3498DB", "#2ECC71", "#F1C40F", "#9B59B6"] as const;
 const HARD_EXTRA = "#E67E22";
+const CONFETTI_COLORS = ["#E74C3C", "#3498DB", "#2ECC71", "#F1C40F", "#9B59B6", "#E67E22", "#ffffff"];
+const TIPS = [
+  "Focus on capturing large color regions first!",
+  "Pick colors adjacent to your territory for biggest gains.",
+  "Hint rings show colors that will expand your region!",
+  "Watch the timer — speed bonuses add up fast!",
+  "Combos trigger after 3 perfect moves in a row!",
+  "A perfect move captures more than 10% of remaining cells.",
+  "Start from the corner — it gives you the most reach.",
+  "On hard mode, plan two moves ahead!",
+];
 
 type Difficulty = "easy" | "medium" | "hard";
 
@@ -32,6 +44,7 @@ interface GameProps {
   onBack?: () => void;
   onNextLevel?: () => void;
   onLevelComplete?: (stars: number, score: number) => void;
+  onGoSettings?: () => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -141,11 +154,101 @@ function fmtTime(s: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+// ─── Colorblind shape drawing ─────────────────────────────────────────────────
+const COLOR_SHAPE: Record<string, string> = {
+  "#E74C3C": "circle",
+  "#3498DB": "square",
+  "#2ECC71": "triangle",
+  "#F1C40F": "diamond",
+  "#9B59B6": "star",
+  "#E67E22": "cross",
+};
+
+function drawCBShape(ctx: CanvasRenderingContext2D, shape: string, cx: number, cy: number, size: number) {
+  const r = size * 0.26;
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.strokeStyle = "rgba(255,255,255,0.92)";
+  ctx.lineWidth = 1.4;
+
+  switch (shape) {
+    case "circle":
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+      break;
+    case "square":
+      ctx.beginPath(); ctx.rect(cx - r, cy - r, r * 2, r * 2);
+      ctx.fill(); ctx.stroke();
+      break;
+    case "triangle": {
+      const h = r * 1.65;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - h / 2);
+      ctx.lineTo(cx - r, cy + h / 2);
+      ctx.lineTo(cx + r, cy + h / 2);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      break;
+    }
+    case "diamond":
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r * 1.25);
+      ctx.lineTo(cx + r, cy);
+      ctx.lineTo(cx, cy + r * 1.25);
+      ctx.lineTo(cx - r, cy);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      break;
+    case "star": {
+      const outerR = r, innerR = r * 0.42;
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const angle = (i * Math.PI) / 5 - Math.PI / 2;
+        const rad = i % 2 === 0 ? outerR : innerR;
+        const px = cx + rad * Math.cos(angle);
+        const py = cy + rad * Math.sin(angle);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      break;
+    }
+    case "cross": {
+      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.lineWidth = r * 0.55;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.68, cy - r * 0.68);
+      ctx.lineTo(cx + r * 0.68, cy + r * 0.68);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx + r * 0.68, cy - r * 0.68);
+      ctx.lineTo(cx - r * 0.68, cy + r * 0.68);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+      break;
+    }
+  }
+}
+
+// ─── Confetti piece data ──────────────────────────────────────────────────────
+interface ConfettiPiece {
+  id: number;
+  x: number;
+  color: string;
+  width: number;
+  height: number;
+  isCircle: boolean;
+  delay: number;
+  duration: number;
+  drift: number;
+}
+
+// ─── Win/GameOver data ────────────────────────────────────────────────────────
 interface Floater { id: number; text: string; x: number; color: string; }
 interface WinData { score: number; prevBest: number; isNewBest: boolean; stars: number; timeTaken: number; movesUsed: number; }
 
 // ═════════════════════════════════════════════════════════════════════════════
-export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }: GameProps) {
+export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, onGoSettings }: GameProps) {
   const isLevelMode = levelNum != null;
   const initialDiff: Difficulty = isLevelMode ? levelDifficulty(levelNum) : "medium";
 
@@ -153,6 +256,7 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
   const rafRef = useRef<number>(0);
   const waveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const colorblindR = useRef(false);
 
   const [difficulty, setDifficulty] = useState<Difficulty>(initialDiff);
   const [board, setBoard] = useState<string[]>([]);
@@ -167,6 +271,9 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
   const [highScore, setHighScore] = useState(0);
   const [floaters, setFloaters] = useState<Floater[]>([]);
   const [winData, setWinData] = useState<WinData | null>(null);
+  const [paused, setPaused] = useState(false);
+  const [confetti, setConfetti] = useState<ConfettiPiece[]>([]);
+  const [gameTip] = useState(() => TIPS[Math.floor(Math.random() * TIPS.length)]);
 
   // Canvas refs (no React re-render needed)
   const boardR = useRef<string[]>([]);
@@ -178,12 +285,31 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
   const scoreR = useRef(0);
   const comboR = useRef(0);
   const floaterIdR = useRef(0);
+  const pausedR = useRef(false);
+
+  // Load settings once on mount
+  useEffect(() => {
+    colorblindR.current = loadSettings().colorblind;
+  }, []);
 
   const cfg = DIFFICULTIES[difficulty];
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   }, []);
+
+  const startTimer = useCallback(() => {
+    clearTimer();
+    timerRef.current = setInterval(() => {
+      if (pausedR.current) return;
+      timeLeftR.current = Math.max(0, timeLeftR.current - 1);
+      setTimeLeft(timeLeftR.current);
+      if (timeLeftR.current <= 0) {
+        clearInterval(timerRef.current!); timerRef.current = null;
+        setGameOver(true);
+      }
+    }, 1000);
+  }, [clearTimer]);
 
   const addFloater = useCallback((text: string, xFrac: number, color = "#F1C40F") => {
     const id = ++floaterIdR.current;
@@ -200,6 +326,7 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
     pulseR.current.clear();
     comboR.current = 0;
     scoreR.current = 0;
+    pausedR.current = false;
 
     const c = DIFFICULTIES[diff];
     const b = makeBoard(c);
@@ -220,16 +347,11 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
     setHighScore(getHigh(diff));
     setFloaters([]);
     setWinData(null);
+    setPaused(false);
+    setConfetti([]);
 
-    timerRef.current = setInterval(() => {
-      timeLeftR.current = Math.max(0, timeLeftR.current - 1);
-      setTimeLeft(timeLeftR.current);
-      if (timeLeftR.current <= 0) {
-        clearInterval(timerRef.current!); timerRef.current = null;
-        setGameOver(true);
-      }
-    }, 1000);
-  }, [clearTimer]);
+    startTimer();
+  }, [clearTimer, startTimer]);
 
   // Initialize on mount
   useEffect(() => { startGame(initialDiff); }, [startGame]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -239,6 +361,26 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
   useEffect(() => { boardR.current = board; }, [board]);
   useEffect(() => { regionR.current = region; }, [region]);
   useEffect(() => { diffR.current = difficulty; }, [difficulty]);
+  useEffect(() => { pausedR.current = paused; }, [paused]);
+
+  // Confetti on 3-star win
+  useEffect(() => {
+    if (!winData || winData.stars < 3) return;
+    const pieces: ConfettiPiece[] = Array.from({ length: 55 }, (_, i) => ({
+      id: i,
+      x: Math.random() * 100,
+      color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+      width: 6 + Math.random() * 6,
+      height: 8 + Math.random() * 10,
+      isCircle: Math.random() > 0.6,
+      delay: Math.random() * 1.0,
+      duration: 2.2 + Math.random() * 1.8,
+      drift: (Math.random() - 0.5) * 60,
+    }));
+    setConfetti(pieces);
+    const t = setTimeout(() => setConfetti([]), 5000);
+    return () => clearTimeout(t);
+  }, [winData]);
 
   // ── rAF draw loop ────────────────────────────────────────────────────────────
   const draw = useCallback(() => {
@@ -282,6 +424,19 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
       }
     }
 
+    // Colorblind shape overlay
+    if (colorblindR.current && b.length > 0) {
+      for (let row = 0; row < gs; row++) {
+        for (let col = 0; col < gs; col++) {
+          const idx = row * gs + col;
+          const bx = col * (cellSz + GAP), by = row * (cellSz + GAP);
+          const shape = COLOR_SHAPE[b[idx]];
+          if (shape) drawCBShape(ctx, shape, bx + cellSz / 2, by + cellSz / 2, cellSz);
+        }
+      }
+    }
+
+    // Region outline glow
     if (r.size > 0) {
       ctx.save();
       ctx.strokeStyle = "rgba(255,255,255,1)";
@@ -309,7 +464,7 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
 
   // ── pickColor ────────────────────────────────────────────────────────────────
   const pickColor = useCallback((color: string) => {
-    if (color === curColor || won || gameOver || isAnimR.current) return;
+    if (color === curColor || won || gameOver || isAnimR.current || paused) return;
 
     const c = DIFFICULTIES[difficulty];
     const { waves, finalBoard, finalRegion } = fillWaves(board, region, color, c.gridSize);
@@ -395,10 +550,18 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
       boardR.current = [...animB]; regionR.current = new Set(animR);
       wi++;
     }, WAVE_MS);
-  }, [board, region, curColor, won, gameOver, moves, difficulty, clearTimer, addFloater, onLevelComplete]);
+  }, [board, region, curColor, won, gameOver, moves, difficulty, paused, clearTimer, addFloater, onLevelComplete]);
 
   const changeDiff = useCallback((d: Difficulty) => { setDifficulty(d); startGame(d); }, [startGame]);
   const restart = useCallback(() => startGame(isLevelMode ? levelDifficulty(levelNum!) : difficulty), [startGame, isLevelMode, levelNum, difficulty]);
+
+  const togglePause = useCallback(() => {
+    setPaused(prev => {
+      const next = !prev;
+      pausedR.current = next;
+      return next;
+    });
+  }, []);
 
   // Computed values
   const captureGains = useMemo(() => {
@@ -424,10 +587,9 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
   const timerBarColor = timeRatio > 0.5 ? "#2ECC71" : timeRatio > 0.25 ? "#F1C40F" : "#E74C3C";
   const canvasSz = board.length ? cfg.canvasSize : 340;
   const btnSz = difficulty === "hard" ? 44 : 50;
-  const goMsg = coverage < 30 ? "Keep practicing!" : coverage < 60 ? "So close! Try again!" : "Almost had it!";
 
   return (
-    <div style={rootStyle}>
+    <div className="screen-enter" style={rootStyle}>
       <div style={colStyle}>
 
         {/* Top bar: Back + Title + Level indicator */}
@@ -471,15 +633,24 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
           </div>
         )}
 
-        {/* Timer + Score */}
+        {/* Timer + Score + Pause button */}
         <div style={{ width: canvasSz, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <div style={{
               fontSize: "22px", fontWeight: 800, letterSpacing: "-1px", fontVariantNumeric: "tabular-nums",
               color: timeRed ? "#E74C3C" : "#E8E8F0", transition: "color 0.3s ease",
             }}>
               {fmtTime(timeLeft)}
             </div>
+            {!won && !gameOver && (
+              <button onClick={togglePause} style={{
+                background: "none", border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: "6px", color: "#6666AA", fontSize: "13px",
+                padding: "3px 8px", cursor: "pointer", lineHeight: 1.4,
+              }}>
+                {paused ? "▶" : "⏸"}
+              </button>
+            )}
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ color: "#E8E8F0", fontSize: "16px", fontWeight: 700, letterSpacing: "-0.3px" }}>
@@ -538,84 +709,163 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
             </div>
           ))}
 
-          {/* Win overlay */}
+          {/* ── WIN overlay ── */}
           {won && winData && (
             <div style={overlayS}>
-              <div style={{ textAlign: "center" }}>
+              {/* Confetti */}
+              {confetti.length > 0 && (
+                <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
+                  {confetti.map(p => (
+                    <div
+                      key={p.id}
+                      className="confetti-fall"
+                      style={{
+                        position: "absolute",
+                        left: `${p.x}%`,
+                        top: "-12px",
+                        width: p.width,
+                        height: p.height,
+                        backgroundColor: p.color,
+                        borderRadius: p.isCircle ? "50%" : "2px",
+                        animationDelay: `${p.delay}s`,
+                        animationDuration: `${p.duration}s`,
+                        "--drift": `${p.drift}px`,
+                      } as CSSProperties}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <div style={{ textAlign: "center", position: "relative", zIndex: 1 }}>
+                {/* Title */}
+                <div style={{
+                  fontSize: "24px", fontWeight: 900, letterSpacing: "-0.8px",
+                  background: "linear-gradient(135deg, #F1C40F 0%, #E67E22 50%, #F1C40F 100%)",
+                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+                  marginBottom: "10px",
+                }}>
+                  {isLevelMode ? `Level ${levelNum} Complete!` : "You Win!"}
+                </div>
+
                 {/* Stars */}
-                <div style={{ display: "flex", gap: "4px", justifyContent: "center", marginBottom: "8px" }}>
+                <div style={{ display: "flex", gap: "6px", justifyContent: "center", marginBottom: "10px" }}>
                   {[1, 2, 3].map(i => (
                     <span key={i} className="star" style={{
-                      fontSize: "30px", display: "inline-block",
-                      opacity: i <= winData.stars ? 1 : 0.2,
-                      animationDelay: `${(i - 1) * 0.18}s`,
-                      filter: i <= winData.stars ? "drop-shadow(0 0 6px #F1C40F)" : "none",
+                      fontSize: "34px", display: "inline-block",
+                      opacity: i <= winData.stars ? 1 : 0.18,
+                      animationDelay: `${(i - 1) * 0.2}s`,
+                      filter: i <= winData.stars ? "drop-shadow(0 0 8px #F1C40F)" : "none",
                     }}>⭐</span>
                   ))}
                 </div>
 
-                <div style={{ color: "#E8E8F0", fontSize: "20px", fontWeight: 800, letterSpacing: "-0.5px" }}>
-                  {isLevelMode ? `Level ${levelNum} Complete!` : "You Win!"}
-                </div>
-
+                {/* NEW BEST badge */}
                 {winData.isNewBest && (
                   <div style={{
-                    display: "inline-block", marginTop: "5px",
-                    backgroundColor: "#F1C40F", color: "#0F0F1A",
-                    fontSize: "10px", fontWeight: 800, borderRadius: "99px",
-                    padding: "3px 10px", letterSpacing: "0.5px",
+                    display: "inline-block", marginBottom: "10px",
+                    background: "linear-gradient(135deg, #F1C40F, #E67E22)",
+                    color: "#0F0F1A",
+                    fontSize: "11px", fontWeight: 800, borderRadius: "99px",
+                    padding: "4px 12px", letterSpacing: "0.6px",
+                    boxShadow: "0 0 16px rgba(241,196,15,0.6), 0 2px 8px rgba(0,0,0,0.3)",
                   }}>
                     ✦ NEW BEST!
                   </div>
                 )}
 
-                <div style={{ marginTop: "8px", display: "flex", gap: "18px", justifyContent: "center" }}>
+                {/* Score row */}
+                <div style={{ display: "flex", gap: "20px", justifyContent: "center", marginBottom: "8px" }}>
                   <div style={{ textAlign: "center" }}>
-                    <div style={{ color: "#F1C40F", fontSize: "20px", fontWeight: 800 }}>{winData.score.toLocaleString()}</div>
+                    <div style={{ color: "#F1C40F", fontSize: "22px", fontWeight: 800 }}>{winData.score.toLocaleString()}</div>
                     <div style={{ color: "#5555AA", fontSize: "10px" }}>Score</div>
                   </div>
+                  <div style={{ width: "1px", backgroundColor: "rgba(255,255,255,0.1)" }} />
                   <div style={{ textAlign: "center" }}>
-                    <div style={{ color: "#8888CC", fontSize: "20px", fontWeight: 700 }}>
+                    <div style={{ color: "#8888CC", fontSize: "22px", fontWeight: 700 }}>
                       {(winData.isNewBest ? winData.score : winData.prevBest).toLocaleString()}
                     </div>
                     <div style={{ color: "#5555AA", fontSize: "10px" }}>Best</div>
                   </div>
                 </div>
 
-                <div style={{ marginTop: "6px", color: "#5555AA", fontSize: "11px", display: "flex", gap: "14px", justifyContent: "center" }}>
+                {/* Stats */}
+                <div style={{ color: "#5555AA", fontSize: "11px", display: "flex", gap: "14px", justifyContent: "center", marginBottom: "14px" }}>
                   <span>⏱ {winData.timeTaken}s</span>
                   <span>🎯 {winData.movesUsed} moves</span>
                 </div>
               </div>
 
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "center" }}>
-                <button onClick={restart} style={btnPrimary("#3498DB")}>Play Again</button>
+              {/* Buttons */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", maxWidth: "200px", position: "relative", zIndex: 1 }}>
                 {isLevelMode && levelNum! < TOTAL_LEVELS && (
-                  <button onClick={onNextLevel} style={btnPrimary("#2ECC71")}>Next →</button>
+                  <button onClick={onNextLevel} style={{
+                    background: "linear-gradient(135deg, #2ECC71, #27AE60)",
+                    color: "#fff", border: "none", borderRadius: "12px",
+                    padding: "13px 0", fontSize: "16px", fontWeight: 700,
+                    cursor: "pointer", width: "100%",
+                    boxShadow: "0 6px 20px rgba(46,204,113,0.4)",
+                  }}>
+                    Next Level →
+                  </button>
                 )}
-                {isLevelMode && (
-                  <button onClick={onBack} style={btnSecondary}>Levels</button>
-                )}
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button onClick={restart} style={btnSecondarySmall}>Replay</button>
+                  {isLevelMode && (
+                    <button onClick={onBack} style={btnSecondarySmall}>Levels</button>
+                  )}
+                </div>
               </div>
             </div>
           )}
 
-          {/* Game Over overlay */}
+          {/* ── GAME OVER overlay ── */}
           {gameOver && (
             <div style={overlayS}>
               <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: "38px", lineHeight: 1, marginBottom: "6px" }}>😢</div>
-                <div style={{ color: "#E8E8F0", fontSize: "20px", fontWeight: 800, letterSpacing: "-0.5px" }}>Game Over!</div>
-                <div style={{ color: "#8888AA", fontSize: "13px", marginTop: "4px" }}>{goMsg}</div>
-                <div style={{ marginTop: "8px", color: "#F1C40F", fontSize: "18px", fontWeight: 700 }}>
-                  {score.toLocaleString()} pts
+                <div style={{ fontSize: "42px", lineHeight: 1, marginBottom: "8px" }}>💀</div>
+                <div style={{
+                  fontSize: "22px", fontWeight: 900, letterSpacing: "-0.5px",
+                  background: "linear-gradient(135deg, #E74C3C, #C0392B)",
+                  WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+                  marginBottom: "4px",
+                }}>
+                  Game Over
                 </div>
-                <div style={{ color: "#5555AA", fontSize: "11px", marginTop: "2px" }}>
-                  {coverage}% captured · {moves} moves
+                <div style={{ color: "#8888AA", fontSize: "13px", marginBottom: "12px" }}>
+                  {coverage < 30 ? "Keep practicing!" : coverage < 60 ? "So close! Try again!" : "Almost had it!"}
+                </div>
+
+                {/* Score + coverage */}
+                <div style={{ display: "flex", gap: "20px", justifyContent: "center", marginBottom: "10px" }}>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ color: "#E8E8F0", fontSize: "20px", fontWeight: 800 }}>{score.toLocaleString()}</div>
+                    <div style={{ color: "#5555AA", fontSize: "10px" }}>Score</div>
+                  </div>
+                  <div style={{ width: "1px", backgroundColor: "rgba(255,255,255,0.1)" }} />
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ color: "#E8E8F0", fontSize: "20px", fontWeight: 800 }}>{coverage}%</div>
+                    <div style={{ color: "#5555AA", fontSize: "10px" }}>Captured</div>
+                  </div>
+                </div>
+
+                {/* Tip */}
+                <div style={{
+                  backgroundColor: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: "8px", padding: "8px 12px",
+                  color: "#7777AA", fontSize: "11px", lineHeight: 1.5,
+                  maxWidth: "220px", margin: "0 auto",
+                }}>
+                  💡 {gameTip}
                 </div>
               </div>
+
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "center" }}>
-                <button onClick={restart} style={btnPrimary("#E74C3C")}>Try Again</button>
+                <button onClick={restart} style={{
+                  background: "linear-gradient(135deg, #E74C3C, #C0392B)",
+                  color: "#fff", border: "none", borderRadius: "10px",
+                  padding: "11px 22px", fontSize: "15px", fontWeight: 700, cursor: "pointer",
+                }}>Try Again</button>
                 {isLevelMode ? (
                   <button onClick={onBack} style={btnSecondary}>Levels</button>
                 ) : (
@@ -625,6 +875,58 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
                     changeDiff(order[Math.max(0, i - 1)]);
                   }} style={btnSecondary}>Easier</button>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ── PAUSE overlay ── */}
+          {paused && !won && !gameOver && (
+            <div style={{ ...overlayS, gap: "20px" }}>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "36px", marginBottom: "6px" }}>⏸</div>
+                <div style={{
+                  fontSize: "26px", fontWeight: 900, letterSpacing: "-0.8px",
+                  color: "#E8E8F0",
+                }}>
+                  Paused
+                </div>
+                {isLevelMode && (
+                  <div style={{ color: "#5555AA", fontSize: "12px", marginTop: "4px" }}>Level {levelNum}</div>
+                )}
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "9px", width: "190px" }}>
+                <button onClick={togglePause} style={{
+                  background: "linear-gradient(135deg, #3498DB, #9B59B6)",
+                  color: "#fff", border: "none", borderRadius: "12px",
+                  padding: "13px 0", fontSize: "16px", fontWeight: 700, cursor: "pointer",
+                  boxShadow: "0 6px 20px rgba(52,152,219,0.4)",
+                }}>
+                  ▶ Resume
+                </button>
+                <button onClick={restart} style={{
+                  backgroundColor: "rgba(255,255,255,0.07)", color: "#B8B8CC",
+                  border: "1px solid rgba(255,255,255,0.12)", borderRadius: "12px",
+                  padding: "11px 0", fontSize: "14px", fontWeight: 600, cursor: "pointer", width: "100%",
+                }}>
+                  ↺ Restart Level
+                </button>
+                {onGoSettings && (
+                  <button onClick={onGoSettings} style={{
+                    backgroundColor: "rgba(255,255,255,0.05)", color: "#8888CC",
+                    border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px",
+                    padding: "11px 0", fontSize: "14px", fontWeight: 500, cursor: "pointer", width: "100%",
+                  }}>
+                    ⚙ Settings
+                  </button>
+                )}
+                <button onClick={onBack} style={{
+                  backgroundColor: "transparent", color: "#555577",
+                  border: "none", padding: "8px 0", fontSize: "13px",
+                  fontWeight: 500, cursor: "pointer",
+                }}>
+                  Quit to Menu
+                </button>
               </div>
             </div>
           )}
@@ -641,12 +943,12 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
             const sz = active ? btnSz + 7 : btnSz;
             return (
               <div key={color} style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <button onClick={() => pickColor(color)} disabled={active || won || gameOver || isAnim}
+                <button onClick={() => pickColor(color)} disabled={active || won || gameOver || isAnim || paused}
                   style={{
                     width: sz, height: sz, borderRadius: "50%", backgroundColor: color,
                     border: active ? "3px solid rgba(255,255,255,0.95)" : isHint ? "3px solid rgba(255,255,255,0.45)" : "3px solid transparent",
-                    cursor: active || won || gameOver || isAnim ? "default" : "pointer",
-                    opacity: isZero ? 0.28 : 1,
+                    cursor: active || won || gameOver || isAnim || paused ? "default" : "pointer",
+                    opacity: isZero ? 0.42 : 1,
                     transition: "width 0.15s ease, height 0.15s ease, opacity 0.2s ease, box-shadow 0.15s ease",
                     boxShadow: active ? `0 0 0 4px rgba(255,255,255,0.18), 0 4px 18px ${color}99` : isHint ? `0 0 0 3px ${color}44, 0 4px 14px ${color}77` : `0 4px 10px ${color}44`,
                     outline: "none", padding: 0,
@@ -704,6 +1006,12 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }:
           100% { transform: scale(1) rotate(0deg); opacity: 1; }
         }
         .star { animation: star-pop 0.45s cubic-bezier(0.36,0.07,0.19,0.97) both; }
+        @keyframes confetti-drop {
+          0%   { transform: translateY(0px) translateX(0px) rotate(0deg); opacity: 1; }
+          80%  { opacity: 1; }
+          100% { transform: translateY(420px) translateX(var(--drift, 0px)) rotate(600deg); opacity: 0; }
+        }
+        .confetti-fall { animation: confetti-drop linear both; }
       `}</style>
     </div>
   );
@@ -732,7 +1040,7 @@ const overlayS: CSSProperties = {
   backgroundColor: "rgba(15,15,26,0.92)",
   display: "flex", flexDirection: "column",
   alignItems: "center", justifyContent: "center",
-  gap: "16px", backdropFilter: "blur(8px)",
+  gap: "16px", backdropFilter: "blur(10px)",
 };
 
 const backBtnStyle: CSSProperties = {
@@ -746,12 +1054,14 @@ const backBtnStyle: CSSProperties = {
   minWidth: "60px",
 };
 
-function btnPrimary(bg: string): CSSProperties {
-  return { backgroundColor: bg, color: "#fff", border: "none", borderRadius: "10px", padding: "10px 20px", fontSize: "14px", fontWeight: 600, cursor: "pointer" };
-}
-
 const btnSecondary: CSSProperties = {
   backgroundColor: "rgba(255,255,255,0.08)", color: "#B8B8CC",
   border: "1px solid rgba(255,255,255,0.12)", borderRadius: "10px",
-  padding: "10px 18px", fontSize: "14px", fontWeight: 500, cursor: "pointer",
+  padding: "11px 18px", fontSize: "14px", fontWeight: 500, cursor: "pointer",
+};
+
+const btnSecondarySmall: CSSProperties = {
+  backgroundColor: "rgba(255,255,255,0.07)", color: "#9999BB",
+  border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px",
+  padding: "10px 16px", fontSize: "13px", fontWeight: 500, cursor: "pointer", flex: 1,
 };

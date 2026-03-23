@@ -74,3 +74,13 @@ export function saveOverallBest(score: number): void {
 export function totalStars(progress: LevelProgress[]): number {
   return progress.reduce((s, p) => s + p.stars, 0);
 }
+
+export function resetProgress(): void {
+  try {
+    localStorage.removeItem(LS_PROGRESS);
+    localStorage.removeItem(LS_OVERALL);
+    localStorage.removeItem("cf_best_easy");
+    localStorage.removeItem("cf_best_medium");
+    localStorage.removeItem("cf_best_hard");
+  } catch {}
+}

@@ -9,10 +9,11 @@ const ROWS = 14;
 
 interface Props {
   onPlay: () => void;
+  onSettings: () => void;
   progress: LevelProgress[];
 }
 
-export default function MenuScreen({ onPlay, progress }: Props) {
+export default function MenuScreen({ onPlay, onSettings, progress }: Props) {
   const [cells, setCells] = useState(() =>
     Array.from({ length: COLS * ROWS }, () => BG_COLORS[Math.floor(Math.random() * BG_COLORS.length)])
   );
@@ -31,7 +32,7 @@ export default function MenuScreen({ onPlay, progress }: Props) {
   const completed = progress.filter(p => p.stars > 0).length;
 
   return (
-    <div style={rootS}>
+    <div className="screen-enter" style={rootS}>
       {/* Animated color grid background */}
       <div style={{
         position: "absolute", inset: 0,
@@ -106,7 +107,7 @@ export default function MenuScreen({ onPlay, progress }: Props) {
           <button onClick={onPlay} style={playBtnS}>
             {completed > 0 ? "Continue" : "Play"}
           </button>
-          <button style={settingsBtnS} disabled>
+          <button onClick={onSettings} style={settingsBtnS}>
             Settings
           </button>
         </div>
@@ -160,13 +161,12 @@ const playBtnS: CSSProperties = {
 };
 
 const settingsBtnS: CSSProperties = {
-  backgroundColor: "rgba(255,255,255,0.05)",
-  color: "#44447A",
-  border: "1px solid rgba(255,255,255,0.07)",
+  backgroundColor: "rgba(255,255,255,0.06)",
+  color: "#8888BB",
+  border: "1px solid rgba(255,255,255,0.1)",
   borderRadius: "16px",
   padding: "16px 0",
   fontSize: "17px",
   fontWeight: 500,
-  cursor: "not-allowed",
-  opacity: 0.6,
+  cursor: "pointer",
 };
