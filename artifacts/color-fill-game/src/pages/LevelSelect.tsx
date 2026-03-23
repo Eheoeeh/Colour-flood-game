@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import type { LevelProgress } from "@/lib/levels";
 import { TOTAL_LEVELS, totalStars } from "@/lib/levels";
 import { loadCoins } from "@/lib/coins";
+import BannerAd from "@/components/BannerAd";
 
 interface Props {
   progress: LevelProgress[];
@@ -162,8 +163,10 @@ export default function LevelSelect({ progress, onSelectLevel, onBack }: Props) 
         })}
       </div>
 
-      {/* Bottom padding */}
-      <div style={{ height: "24px" }} />
+      {/* Bottom padding — extra for banner */}
+      <div style={{ height: "72px" }} />
+
+      <BannerAd />
 
       <style>{`
         @keyframes level-pulse {

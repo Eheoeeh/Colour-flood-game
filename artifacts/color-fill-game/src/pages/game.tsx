@@ -55,6 +55,8 @@ interface GameProps {
   onNextLevel?: () => void;
   onLevelComplete?: (stars: number, score: number) => void;
   onGoSettings?: () => void;
+  onWatchAdContinue?: (onGranted: (extraMoves: number, extraSecs: number) => void) => void;
+  onWatchAdHint?: (onGranted: () => void) => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -192,7 +194,7 @@ interface WinData { score: number; prevBest: number; isNewBest: boolean; stars: 
 interface ConfettiPiece { id: number; x: number; color: string; width: number; height: number; isCircle: boolean; delay: number; duration: number; drift: number; }
 
 // ═════════════════════════════════════════════════════════════════════════════
-export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, onGoSettings }: GameProps) {
+export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, onGoSettings, onWatchAdContinue, onWatchAdHint }: GameProps) {
   const isLevelMode = levelNum != null;
   const initialDiff: Difficulty = isLevelMode ? levelDifficulty(levelNum) : "medium";
 
@@ -226,6 +228,7 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
   const [frozen, setFrozen] = useState(false);
   const [hintColor, setHintColor] = useState<string | null>(null);
   const [freezeSecsLeft, setFreezeSecsLeft] = useState(0);
+  const [adContinueUsed, setAdContinueUsed] = useState(false);
 
   // ── Refs (no re-render) ────────────────────────────────────────────────────
   const boardR = useRef<string[]>([]);
@@ -323,7 +326,7 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
     setScore(0); setHighScore(getHigh(diff)); setFloaters([]); setWinData(null);
     setPaused(false); setConfetti([]); setFrozen(false); setFreezeSecsLeft(0);
     setHintColor(null); setUsedPU({ freeze: 0, hint: 0, bomb: 0 });
-    setCoins(coinsR.current);
+    setCoins(coinsR.current); setAdContinueUsed(false);
     startTimer();
   }, [clearTimer, startTimer]);
 
@@ -562,6 +565,40 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
   const changeDiff = useCallback((d: Difficulty) => { setDifficulty(d); startGame(d); }, [startGame]);
   const restart = useCallback(() => startGame(isLevelMode ? levelDifficulty(levelNum!) : difficulty), [startGame, isLevelMode, levelNum, difficulty]);
   const togglePause = useCallback(() => { setPaused(prev => { pausedR.current = !prev; return !prev; }); }, []);
+
+  // ── Ad: continue game after game over ─────────────────────────────────────
+  const handleAdContinue = useCallback(() => {
+    if (!onWatchAdContinue) return;
+    onWatchAdContinue((extraMoves, extraSecs) => {
+      const newMoves = Math.max(0, movesR.current - extraMoves);
+      movesR.current = newMoves;
+      setMoves(newMoves);
+      timeLeftR.current = Math.min(DIFFICULTIES[diffR.current].timeLimit * 2, timeLeftR.current + extraSecs);
+      setTimeLeft(timeLeftR.current);
+      setAdContinueUsed(true);
+      setGameOver(false);
+      startTimer();
+    });
+  }, [onWatchAdContinue, startTimer]);
+
+  // ── Ad: reveal next 3 best moves as flashing hints ────────────────────────
+  const handleAdHint = useCallback(() => {
+    if (!onWatchAdHint) return;
+    onWatchAdHint(() => {
+      const c = DIFFICULTIES[diffR.current];
+      const gains: [string, number][] = c.colors
+        .filter(col => col !== boardR.current[0])
+        .map(col => [col, floodFill(boardR.current, regionR.current, col, c.gridSize).region.size - regionR.current.size]);
+      gains.sort((a, b) => b[1] - a[1]);
+      const top3 = gains.slice(0, 3).map(g => g[0]);
+      top3.forEach((col, idx) => {
+        setTimeout(() => setHintColor(col), idx * 600);
+        setTimeout(() => setHintColor(null), idx * 600 + 550);
+      });
+      setGameOver(false);
+      startTimer();
+    });
+  }, [onWatchAdHint, startTimer]);
 
   // ── Computed ──────────────────────────────────────────────────────────────
   const captureGains = useMemo(() => {
@@ -824,6 +861,41 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
                   💡 {gameTip}
                 </div>
               </div>
+
+              {/* Rewarded ad buttons */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%", maxWidth: "220px" }}>
+                {onWatchAdContinue && !adContinueUsed && (
+                  <button
+                    onClick={handleAdContinue}
+                    style={{
+                      width: "100%", padding: "11px 0",
+                      borderRadius: "10px", border: "1px solid rgba(52,152,219,0.45)",
+                      background: "linear-gradient(135deg, rgba(52,152,219,0.18), rgba(155,89,182,0.18))",
+                      color: "#88BBEE", fontSize: "13px", fontWeight: 700, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+                    }}
+                  >
+                    <span>🎬</span>
+                    <span>Watch Ad to Continue (+5 moves +10s)</span>
+                  </button>
+                )}
+                {onWatchAdHint && (
+                  <button
+                    onClick={handleAdHint}
+                    style={{
+                      width: "100%", padding: "11px 0",
+                      borderRadius: "10px", border: "1px solid rgba(241,196,15,0.35)",
+                      background: "linear-gradient(135deg, rgba(241,196,15,0.12), rgba(230,126,34,0.12))",
+                      color: "#CCAA44", fontSize: "13px", fontWeight: 700, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+                    }}
+                  >
+                    <span>🎬</span>
+                    <span>Watch Ad to Reveal 3 Best Moves</span>
+                  </button>
+                )}
+              </div>
+
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "center" }}>
                 <button onClick={restart} style={{ background: "linear-gradient(135deg, #E74C3C, #C0392B)", color: "#fff", border: "none", borderRadius: "10px", padding: "11px 22px", fontSize: "15px", fontWeight: 700, cursor: "pointer" }}>Try Again</button>
                 {isLevelMode ? (

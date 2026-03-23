@@ -1,0 +1,70 @@
+Add AdMob advertisement integration to the Color Fill game.
+Keep all existing code working perfectly.
+
+AD PLACEMENT STRATEGY:
+The game needs 3 types of ads:
+
+1. INTERSTITIAL ADS (full screen):
+- Show after every 3 completed levels
+- Show on game over screen (after displaying results)
+- Never interrupt gameplay
+- Add 1 second delay before showing
+
+2. REWARDED ADS:
+- "Watch Ad for +50 coins" button in Settings/Shop
+- "Watch Ad to Continue" on game over screen
+  (gives player 5 extra moves and 10 extra seconds)
+- "Watch Ad to Reveal Solution" hint (shows 
+  optimal next 3 moves highlighted)
+- Player must actively choose these
+
+3. BANNER ADS:
+- Small banner at very bottom of screen
+- Only show on: main menu, level select, settings
+- Never show during active gameplay
+- Never cover UI elements
+
+AD IMPLEMENTATION:
+Since this is HTML5, implement using Google AdSense/
+AdMob web format. Add these placeholder functions 
+that are ready for real ad SDK integration:
+
+function showInterstitialAd(callback) {
+  // Placeholder: simulate ad with 2 second delay
+  setTimeout(callback, 2000);
+  showAdLoadingOverlay("Ad loading...");
+}
+
+function showRewardedAd(callback) {
+  // Placeholder: simulate rewarded ad
+  showAdLoadingOverlay("Rewarded ad...");
+  setTimeout(() => {
+    callback(true); // true = user completed ad
+  }, 3000);
+}
+
+AD UI:
+- "Ad Loading..." overlay when ad is loading
+- Clean transition back to game after ad
+- "No thanks" option on rewarded ads (doesn't give reward)
+- Ad counter: track total ads watched in localStorage
+- After watching 10 ads: unlock "Ad Free Hour" 
+  (no interstitial ads for 60 minutes)
+
+MONETIZATION TRACKING:
+Add a simple stats object saved to localStorage:
+- Total ads watched
+- Total coins earned from ads  
+- Total levels completed
+- Session count
+- This data helps optimize ad placement later
+
+IMPORTANT:
+- Ads should NEVER feel punishing
+- Always give player value for watching rewarded ads
+- Interstitials only between natural break points
+- Keep "Watch Ad" buttons prominent in shop
+
+Add console.log statements so we can see when 
+ads would fire in production. This makes it easy 
+to replace placeholders with real AdMob SDK later.

@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { getOverallBest, totalStars, TOTAL_LEVELS } from "@/lib/levels";
 import type { LevelProgress } from "@/lib/levels";
 import { loadCoins } from "@/lib/coins";
+import BannerAd from "@/components/BannerAd";
 
 const BG_COLORS = ["#E74C3C", "#3498DB", "#2ECC71", "#F1C40F", "#9B59B6", "#E67E22"];
 const COLS = 8;
@@ -128,6 +129,8 @@ export default function MenuScreen({ onPlay, onSettings, progress }: Props) {
           50% { transform: translateY(-6px); }
         }
       `}</style>
+
+      <BannerAd />
     </div>
   );
 }

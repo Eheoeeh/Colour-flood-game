@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { loadSettings, saveSettings, type GameSettings } from "@/lib/settings";
 import { resetProgress } from "@/lib/levels";
-import { loadCoins, addWatchAdCoins } from "@/lib/coins";
+import { loadCoins, saveCoins } from "@/lib/coins";
+import BannerAd from "@/components/BannerAd";
 
 interface Props {
   onBack: () => void;
+  onWatchAdForCoins?: (onGranted: (amount: number) => void) => void;
 }
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
@@ -104,7 +106,7 @@ function SectionLabel({ text }: { text: string }) {
   );
 }
 
-export default function SettingsScreen({ onBack }: Props) {
+export default function SettingsScreen({ onBack, onWatchAdForCoins }: Props) {
   const [settings, setSettings] = useState<GameSettings>(loadSettings);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetDone, setResetDone] = useState(false);
@@ -129,10 +131,21 @@ export default function SettingsScreen({ onBack }: Props) {
   }
 
   function handleWatchAd() {
-    const next = addWatchAdCoins();
-    setCoins(next);
-    setAdDone(true);
-    setTimeout(() => setAdDone(false), 3000);
+    if (onWatchAdForCoins) {
+      onWatchAdForCoins((amount) => {
+        const next = coins + amount;
+        saveCoins(next);
+        setCoins(next);
+        setAdDone(true);
+        setTimeout(() => setAdDone(false), 3000);
+      });
+    } else {
+      const next = coins + 50;
+      saveCoins(next);
+      setCoins(next);
+      setAdDone(true);
+      setTimeout(() => setAdDone(false), 3000);
+    }
   }
 
   return (
@@ -178,7 +191,7 @@ export default function SettingsScreen({ onBack }: Props) {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "20px 18px 40px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "20px 18px 92px" }}>
         {/* Sound & Music */}
         <SectionLabel text="Sound & Music" />
         <Card>
@@ -374,6 +387,8 @@ export default function SettingsScreen({ onBack }: Props) {
           Color Fill v1.0
         </div>
       </div>
+
+      <BannerAd />
     </div>
   );
 }
