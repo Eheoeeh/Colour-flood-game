@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Color Fill Game"
+version = "1.0.0"
+id = "artifacts/color-fill-game"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19072
+
+[services.development]
+run = "pnpm --filter @workspace/color-fill-game run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/color-fill-game", "run", "build" ]
+publicDir = "artifacts/color-fill-game/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19072"
+BASE_PATH = "/"
