@@ -92,6 +92,36 @@ Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used b
 
 Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
 
+### `artifacts/color-fill-game` (`@workspace/color-fill-game`)
+
+React + Vite hyper-casual mobile game (flood-fill grid, 30 levels, full UI). Served at `/`.
+
+**Key source files:**
+- `src/App.tsx` — screen router (menu → levelselect → game → settings)
+- `src/pages/game.tsx` — main game logic: wave flood-fill, rAF canvas renderer, power-ups, coins, pause, win/loss
+- `src/pages/MenuScreen.tsx` — animated color-grid background, coin badge, Play/Settings
+- `src/pages/LevelSelect.tsx` — 30 levels in Easy/Medium/Hard tiers, star display, coin display
+- `src/pages/SettingsScreen.tsx` — iOS toggles (sound/music/vibration/colorblind), Shop section, Reset Progress
+- `src/lib/levels.ts` — level progress, star tracking, localStorage
+- `src/lib/coins.ts` — coin system (loadCoins, saveCoins, earnCoins, addWatchAdCoins)
+- `src/lib/settings.ts` — settings persistence
+
+**Features:**
+- Flood-fill gameplay with wave animation, combo system, score floaters
+- 3 difficulty configs: Easy (8×8/25 moves/60s), Medium (10×10/22 moves/45s), Hard (14×14/28 moves/35s + orange)
+- 30-level progression with star ratings (3★ needs >40% moves AND time remaining)
+- **Coin economy:** Start with 100 coins; earn 10/25/50 for 1/2/3 star completions; spend on power-ups
+- **Power-ups (3 per game):**
+  - ❄️ Freeze (20 coins, max 3): halts countdown for 5 seconds, ice-blue timer display
+  - 💡 Hint (15 coins, max 3): flashes best color button 3× with gold glow
+  - 💣 Bomb (30 coins, max 2): force-converts 3×3 area at centroid of uncaptured region
+- **Shop** in Settings: current balance, power-up cost reference, "Watch Ad for +50 coins" placeholder
+- Colorblind mode: shapes inside cells (circle=red, square=blue, triangle=green, diamond=yellow, star=purple, cross=orange)
+- Pause overlay: Resume/Restart/Settings/Quit
+- Win screen: animated stars, NEW BEST badge, coin earn display, confetti on 3★
+- Coin display in menu, level select, and in-game (top-right)
+- All localStorage keys: `cf_best_easy/medium/hard`, `cf_progress_v1`, `cf_overall_best`, `cf_settings_v1`, `cf_coins_v1`, `cf_coins_init`
+
 ### `scripts` (`@workspace/scripts`)
 
 Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { CSSProperties } from "react";
 import type { LevelProgress } from "@/lib/levels";
 import { TOTAL_LEVELS, totalStars } from "@/lib/levels";
+import { loadCoins } from "@/lib/coins";
 
 interface Props {
   progress: LevelProgress[];
@@ -35,6 +36,7 @@ export default function LevelSelect({ progress, onSelectLevel, onBack }: Props) 
 
   const stars = totalStars(progress);
   const completed = progress.filter(p => p.stars > 0).length;
+  const coins = loadCoins();
 
   // Group levels into sections of 10
   const sections = [
@@ -49,9 +51,13 @@ export default function LevelSelect({ progress, onSelectLevel, onBack }: Props) 
       <div style={headerS}>
         <button onClick={onBack} style={backBtnS}>← Back</button>
         <span style={{ color: "#E8E8F0", fontSize: "16px", fontWeight: 700 }}>Level Select</span>
-        <span style={{ fontSize: "11px", color: "#F1C40F", fontWeight: 700, minWidth: "56px", textAlign: "right" }}>
-          ★ {stars} / {TOTAL_LEVELS * 3}
-        </span>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "2px", minWidth: "70px" }}>
+          <span style={{ fontSize: "11px", color: "#F1C40F", fontWeight: 700 }}>★ {stars} / {TOTAL_LEVELS * 3}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+            <span style={{ fontSize: "12px" }}>🪙</span>
+            <span style={{ color: "#F1C40F", fontSize: "12px", fontWeight: 700 }}>{coins}</span>
+          </div>
+        </div>
       </div>
 
       {/* Progress bar */}

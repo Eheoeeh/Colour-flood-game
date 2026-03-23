@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { getOverallBest, totalStars, TOTAL_LEVELS } from "@/lib/levels";
 import type { LevelProgress } from "@/lib/levels";
+import { loadCoins } from "@/lib/coins";
 
 const BG_COLORS = ["#E74C3C", "#3498DB", "#2ECC71", "#F1C40F", "#9B59B6", "#E67E22"];
 const COLS = 8;
@@ -30,6 +31,7 @@ export default function MenuScreen({ onPlay, onSettings, progress }: Props) {
   const best = getOverallBest();
   const stars = totalStars(progress);
   const completed = progress.filter(p => p.stars > 0).length;
+  const coins = loadCoins();
 
   return (
     <div className="screen-enter" style={rootS}>
@@ -78,6 +80,13 @@ export default function MenuScreen({ onPlay, onSettings, progress }: Props) {
           <div style={{ color: "#44447A", fontSize: "11px", letterSpacing: "3px", marginTop: "8px", fontWeight: 600 }}>
             FLOOD & CONQUER
           </div>
+        </div>
+
+        {/* Coin balance badge */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", backgroundColor: "rgba(241,196,15,0.12)", border: "1px solid rgba(241,196,15,0.25)", borderRadius: "99px", padding: "6px 16px" }}>
+          <span style={{ fontSize: "16px" }}>🪙</span>
+          <span style={{ color: "#F1C40F", fontSize: "16px", fontWeight: 800, letterSpacing: "-0.3px" }}>{coins}</span>
+          <span style={{ color: "#886600", fontSize: "11px", fontWeight: 500 }}>coins</span>
         </div>
 
         {/* Stats row (if progress) */}
