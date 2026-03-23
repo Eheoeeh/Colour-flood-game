@@ -257,19 +257,50 @@
 }
 
 /* Screen fade-in transition */
+@-webkit-keyframes screen-fade-in {
+  from { opacity: 0; -webkit-transform: translateY(6px); transform: translateY(6px); }
+  to   { opacity: 1; -webkit-transform: translateY(0);   transform: translateY(0); }
+}
 @keyframes screen-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@-webkit-keyframes cf-gradient-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes cf-gradient-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@-webkit-keyframes cf-splash-dot {
+  from { -webkit-transform: translateY(0px); transform: translateY(0px); opacity: 0.4; }
+  to   { -webkit-transform: translateY(-16px); transform: translateY(-16px); opacity: 1; }
+}
+@keyframes cf-splash-dot {
+  from { transform: translateY(0px); opacity: 0.4; }
+  to   { transform: translateY(-16px); opacity: 1; }
 }
 
 .screen-enter {
+  -webkit-animation: screen-fade-in 0.22s ease both;
   animation: screen-fade-in 0.22s ease both;
+}
+
+.cf-menu-bg {
+  background: linear-gradient(135deg, #E74C3C, #9B59B6, #3498DB, #2ECC71, #F1C40F, #E67E22, #E74C3C);
+  background-size: 400% 400%;
+  -webkit-animation: cf-gradient-shift 14s ease infinite;
+  animation: cf-gradient-shift 14s ease infinite;
+}
+
+.cf-splash-dot {
+  -webkit-animation: cf-splash-dot 0.75s ease-in-out infinite alternate;
+  animation: cf-splash-dot 0.75s ease-in-out infinite alternate;
 }
 
 /**

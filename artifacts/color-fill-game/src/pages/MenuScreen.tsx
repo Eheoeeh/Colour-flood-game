@@ -1,19 +1,8 @@
-import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { getOverallBest, totalStars, TOTAL_LEVELS } from "@/lib/levels";
 import type { LevelProgress } from "@/lib/levels";
 import { loadCoins } from "@/lib/coins";
 import BannerAd from "@/components/BannerAd";
-import { isAndroid } from "@/lib/device";
-
-const BG_COLORS = ["#E74C3C", "#3498DB", "#2ECC71", "#F1C40F", "#9B59B6", "#E67E22"];
-
-// Reduce grid heavily on Android to prevent CPU/render overload
-const android = isAndroid();
-const COLS = android ? 4 : 8;
-const ROWS = android ? 6 : 14;
-const CELL_INTERVAL = android ? 3500 : 900;
-const CELL_TRANSITION = android ? "none" : "background-color 2.8s ease";
 
 interface Props {
   onPlay: () => void;
@@ -22,49 +11,29 @@ interface Props {
 }
 
 export default function MenuScreen({ onPlay, onSettings, progress }: Props) {
-  const [cells, setCells] = useState(() =>
-    Array.from({ length: COLS * ROWS }, () => BG_COLORS[Math.floor(Math.random() * BG_COLORS.length)])
-  );
-
-  useEffect(() => {
-    let raf: number;
-    let lastUpdate = 0;
-
-    const tick = (now: number) => {
-      raf = requestAnimationFrame(tick);
-      if (now - lastUpdate < CELL_INTERVAL) return;
-      lastUpdate = now;
-      setCells(prev =>
-        prev.map(c => (Math.random() > 0.93 ? BG_COLORS[Math.floor(Math.random() * BG_COLORS.length)] : c))
-      );
-    };
-
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
   const best = getOverallBest();
   const stars = totalStars(progress);
   const completed = progress.filter(p => p.stars > 0).length;
   const coins = loadCoins();
 
+  const handlePlay = () => {
+    console.log("[CF] Play button tapped");
+    onPlay();
+  };
+
+  const handleSettings = () => {
+    console.log("[CF] Settings button tapped");
+    onSettings();
+  };
+
   return (
     <div className="screen-enter" style={rootS}>
-      {/* Animated color grid background */}
-      <div style={{
-        position: "absolute", inset: 0,
-        display: "grid",
-        gridTemplateColumns: `repeat(${COLS}, 1fr)`,
-        gridTemplateRows: `repeat(${ROWS}, 1fr)`,
-        gap: "3px", padding: "3px",
-        opacity: 0.2,
-      }}>
-        {cells.map((c, i) => (
-          <div key={i} style={{ backgroundColor: c, borderRadius: "5px", transition: CELL_TRANSITION }} />
-        ))}
-      </div>
+      {/* CSS-only animated gradient background — no JS, no rAF, works in any WebView */}
+      <div className="cf-menu-bg" style={{
+        position: "absolute", inset: 0, opacity: 0.22,
+      }} />
 
-      {/* Gradient overlay */}
+      {/* Dark overlay */}
       <div style={{
         position: "absolute", inset: 0,
         background: "linear-gradient(160deg, rgba(15,15,26,0.55) 0%, rgba(15,15,26,0.82) 55%, rgba(15,15,26,0.95) 100%)",
@@ -128,10 +97,20 @@ export default function MenuScreen({ onPlay, onSettings, progress }: Props) {
 
         {/* Buttons */}
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "240px" }}>
-          <button onClick={onPlay} style={playBtnS} type="button">
+          <button
+            type="button"
+            onClick={handlePlay}
+            onTouchEnd={(e) => { e.preventDefault(); handlePlay(); }}
+            style={playBtnS}
+          >
             {completed > 0 ? "Continue" : "Play"}
           </button>
-          <button onClick={onSettings} style={settingsBtnS} type="button">
+          <button
+            type="button"
+            onClick={handleSettings}
+            onTouchEnd={(e) => { e.preventDefault(); handleSettings(); }}
+            style={settingsBtnS}
+          >
             Settings
           </button>
         </div>
@@ -151,7 +130,7 @@ const rootS: CSSProperties = {
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
-  fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+  fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, Arial, sans-serif",
   userSelect: "none",
   WebkitUserSelect: "none",
 };
@@ -176,7 +155,7 @@ const playBtnS: CSSProperties = {
   cursor: "pointer",
   letterSpacing: "-0.3px",
   boxShadow: "0 10px 30px rgba(52,152,219,0.45)",
-  transition: "transform 0.1s ease, box-shadow 0.1s ease",
+  WebkitTapHighlightColor: "transparent",
   touchAction: "manipulation",
 };
 
@@ -189,5 +168,6 @@ const settingsBtnS: CSSProperties = {
   fontSize: "17px",
   fontWeight: 500,
   cursor: "pointer",
+  WebkitTapHighlightColor: "transparent",
   touchAction: "manipulation",
 };

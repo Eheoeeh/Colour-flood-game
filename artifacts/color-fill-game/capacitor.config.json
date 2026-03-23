@@ -1,0 +1,12 @@
+{
+  "appId": "com.colorfill.game",
+  "appName": "Color Fill",
+  "webDir": "dist/capacitor",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true,
+    "webContentsDebuggingEnabled": true
+  }
+}
