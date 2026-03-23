@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { loadSettings, saveSettings, type GameSettings } from "@/lib/settings";
-import { resetProgress } from "@/lib/levels";
+import { resetProgress, totalStars, loadProgress } from "@/lib/levels";
+import { loadAdStats } from "@/lib/ads";
+import { loadGameStats, getFavoriteColor, formatTimePlayed } from "@/lib/gameStats";
 import { loadCoins, saveCoins } from "@/lib/coins";
 import BannerAd from "@/components/BannerAd";
 
@@ -106,12 +108,29 @@ function SectionLabel({ text }: { text: string }) {
   );
 }
 
+const COLOR_NAMES: Record<string, string> = {
+  "#E74C3C": "Red",
+  "#3498DB": "Blue",
+  "#2ECC71": "Green",
+  "#F1C40F": "Yellow",
+  "#9B59B6": "Purple",
+  "#E67E22": "Orange",
+};
+
 export default function SettingsScreen({ onBack, onWatchAdForCoins }: Props) {
   const [settings, setSettings] = useState<GameSettings>(loadSettings);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetDone, setResetDone] = useState(false);
   const [coins, setCoins] = useState<number>(loadCoins);
   const [adDone, setAdDone] = useState(false);
+
+  const gameStats = loadGameStats();
+  const adStats = loadAdStats();
+  const progress = loadProgress();
+  const starCount = totalStars(progress);
+  const levelsCompleted = progress.filter(p => p.stars > 0).length;
+  const favColor = getFavoriteColor(gameStats);
+  const timePlayed = formatTimePlayed(gameStats.totalTimeSec);
 
   function update(key: keyof GameSettings, val: boolean) {
     const next = { ...settings, [key]: val };
@@ -310,6 +329,37 @@ export default function SettingsScreen({ onBack, onWatchAdForCoins }: Props) {
                 </button>
               )}
             </div>
+          </div>
+        </Card>
+
+        {/* My Stats */}
+        <SectionLabel text="My Stats" />
+        <Card>
+          <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            {[
+              { label: "Levels Completed", value: String(levelsCompleted), icon: "🏆" },
+              { label: "Total Stars", value: `${starCount} ★`, icon: "⭐" },
+              { label: "Total Moves", value: gameStats.totalMoves.toLocaleString(), icon: "🎮" },
+              { label: "Time Played", value: timePlayed, icon: "⏱" },
+              { label: "Lifetime Coins", value: gameStats.totalCoinsEarned.toLocaleString(), icon: "🪙" },
+              { label: "Ads Watched", value: String(adStats.totalAdsWatched), icon: "🎬" },
+            ].map(stat => (
+              <div key={stat.label} style={{ display: "flex", alignItems: "center" }}>
+                <span style={{ fontSize: 18, marginRight: 12, width: 24, textAlign: "center" }}>{stat.icon}</span>
+                <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 13, flex: 1 }}>{stat.label}</span>
+                <span style={{ color: "#E8E8F0", fontSize: 14, fontWeight: 700 }}>{stat.value}</span>
+              </div>
+            ))}
+            {favColor && (
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <span style={{ fontSize: 18, marginRight: 12, width: 24, textAlign: "center" }}>🎨</span>
+                <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 13, flex: 1 }}>Favorite Color</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 14, height: 14, borderRadius: "50%", backgroundColor: favColor, boxShadow: `0 0 6px ${favColor}88`, flexShrink: 0 }} />
+                  <span style={{ color: "#E8E8F0", fontSize: 14, fontWeight: 700 }}>{COLOR_NAMES[favColor] ?? favColor}</span>
+                </div>
+              </div>
+            )}
           </div>
         </Card>
 

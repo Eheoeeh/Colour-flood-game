@@ -4,6 +4,7 @@ import LevelSelect from "@/pages/LevelSelect";
 import Game from "@/pages/game";
 import SettingsScreen from "@/pages/SettingsScreen";
 import AdOverlay from "@/components/AdOverlay";
+import SplashScreen from "@/components/SplashScreen";
 import type { AdType } from "@/components/AdOverlay";
 import {
   loadProgress,
@@ -30,6 +31,7 @@ interface AdRequest {
 }
 
 export default function App() {
+  const [splashDone, setSplashDone] = useState(false);
   const [screen, setScreen] = useState<Screen>("menu");
   const [currentLevel, setCurrentLevel] = useState(1);
   const [progress, setProgress] = useState<LevelProgress[]>(loadProgress);
@@ -112,7 +114,6 @@ export default function App() {
     setScreen("settings");
   };
 
-  // ── Rewarded: Watch ad to continue after game over ────────────────────────
   const handleWatchAdContinue = useCallback(
     (onGranted: (extraMoves: number, extraSecs: number) => void) => {
       showRewardedAd("Watch to get 5 extra moves + 10s!", (watched) => {
@@ -125,7 +126,6 @@ export default function App() {
     [showRewardedAd]
   );
 
-  // ── Rewarded: Watch ad for hint (reveal next 3 best moves) ───────────────
   const handleWatchAdHint = useCallback(
     (onGranted: () => void) => {
       showRewardedAd("Watch to reveal the next 3 best moves!", (watched) => {
@@ -138,7 +138,6 @@ export default function App() {
     [showRewardedAd]
   );
 
-  // ── Rewarded: Watch ad for coins (in Settings) ────────────────────────────
   const handleWatchAdForCoins = useCallback(
     (onGranted: (coins: number) => void) => {
       showRewardedAd("Watch to earn +50 coins!", (watched) => {
@@ -154,6 +153,8 @@ export default function App() {
 
   return (
     <>
+      {!splashDone && <SplashScreen onDone={() => setSplashDone(true)} />}
+
       {screen === "menu" && (
         <MenuScreen
           onPlay={() => setScreen("levelselect")}

@@ -3,6 +3,8 @@ import type { CSSProperties } from "react";
 import { TOTAL_LEVELS } from "@/lib/levels";
 import { loadSettings } from "@/lib/settings";
 import { loadCoins, saveCoins, coinsForStars } from "@/lib/coins";
+import { playSound } from "@/lib/sound";
+import { recordMove, recordTimePlayed, recordCoinsEarned } from "@/lib/gameStats";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GAP = 1;
@@ -260,6 +262,9 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
       setTimeLeft(timeLeftR.current);
       if (timeLeftR.current <= 0) {
         clearInterval(timerRef.current!); timerRef.current = null;
+        playSound("gameover");
+        const c = DIFFICULTIES[diffR.current];
+        recordTimePlayed(c.timeLimit);
         setGameOver(true);
       }
     }, 1000);
@@ -300,6 +305,10 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
     coinsR.current += earned;
     saveCoins(coinsR.current);
     setCoins(coinsR.current);
+
+    playSound("win");
+    if (earned > 0) { playSound("coin"); recordCoinsEarned(earned); }
+    recordTimePlayed(c.timeLimit - tLeft);
 
     setWinData({ score: totalScore, prevBest, isNewBest, stars,
       timeTaken: c.timeLimit - tLeft, movesUsed: newMoves, coinsEarned: earned });
@@ -439,6 +448,8 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
   // ── pickColor ─────────────────────────────────────────────────────────────
   const pickColor = useCallback((color: string) => {
     if (color === curColor || won || gameOver || isAnimR.current || paused) return;
+    playSound("fill");
+    recordMove(color);
     const c = DIFFICULTIES[difficulty];
     const { waves, finalBoard, finalRegion } = fillWaves(board, region, color, c.gridSize);
     const newMoves = moves + 1;
@@ -466,7 +477,11 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
 
     if (waves.length === 0) {
       setBoard(finalBoard); setRegion(finalRegion); setCurColor(color); setMoves(newMoves);
-      if (newMoves >= c.moveLimit && finalRegion.size < totalCells) { clearTimer(); setGameOver(true); }
+      if (newMoves >= c.moveLimit && finalRegion.size < totalCells) {
+        clearTimer(); playSound("gameover");
+        recordTimePlayed(c.timeLimit - timeLeftR.current);
+        setGameOver(true);
+      }
       return;
     }
     isAnimR.current = true; setIsAnim(true);
@@ -479,7 +494,11 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
         setBoard(finalBoard); setRegion(finalRegion); setCurColor(color); setMoves(newMoves);
         setIsAnim(false);
         if (finalRegion.size === totalCells) { handleWin(newMoves); }
-        else if (newMoves >= c.moveLimit) { clearTimer(); setGameOver(true); }
+        else if (newMoves >= c.moveLimit) {
+          clearTimer(); playSound("gameover");
+          recordTimePlayed(c.timeLimit - timeLeftR.current);
+          setGameOver(true);
+        }
         return;
       }
       const wave = waves[wi], wt = performance.now();
@@ -502,6 +521,7 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
     saveCoins(coinsR.current);
     setCoins(coinsR.current);
     setUsedPU(prev => ({ ...prev, [type]: prev[type] + 1 }));
+    playSound("powerup");
 
     if (type === "freeze") {
       frozenR.current = true; setFrozen(true); setFreezeSecsLeft(5);
@@ -944,7 +964,7 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
             const showBadge = !active && gain > 5 && !isAnim;
             const isHint = !active && adjacent.has(color);
             const isHintFlash = color === hintColor;
-            const sz = active ? btnSz + 7 : btnSz;
+            const sz = btnSz;
             return (
               <div key={color} style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <button
@@ -955,10 +975,13 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
                     width: sz, height: sz, borderRadius: "50%", backgroundColor: color,
                     border: active ? "3px solid rgba(255,255,255,0.95)" : isHint ? "3px solid rgba(255,255,255,0.45)" : "3px solid transparent",
                     cursor: active || won || gameOver || isAnim || paused ? "default" : "pointer",
-                    opacity: isZero ? 0.42 : 1,
-                    transition: "width 0.15s ease, height 0.15s ease, opacity 0.2s ease, box-shadow 0.15s ease",
-                    boxShadow: active ? `0 0 0 4px rgba(255,255,255,0.18), 0 4px 18px ${color}99` : isHint ? `0 0 0 3px ${color}44, 0 4px 14px ${color}77` : `0 4px 10px ${color}44`,
+                    opacity: isZero ? 0.55 : 1,
+                    transition: "transform 0.15s ease, opacity 0.2s ease, box-shadow 0.15s ease",
+                    boxShadow: active ? `0 0 0 5px rgba(255,255,255,0.22), 0 4px 20px ${color}AA` : isHint ? `0 0 0 3px ${color}44, 0 4px 14px ${color}77` : `0 4px 10px ${color}44`,
+                    transform: active ? "scale(1.14)" : "scale(1)",
                     outline: "none", padding: 0,
+                    touchAction: "manipulation",
+                    flexShrink: 0,
                   }}
                 />
                 {showBadge && (

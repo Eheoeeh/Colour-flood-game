@@ -1,0 +1,67 @@
+Final polish pass for Color Fill game before APK conversion.
+Keep all existing code working perfectly.
+
+BUG FIXES:
+- Ensure Yellow button always shows bright #F1C40F 
+  (not olive/dark yellow) on all screens
+- Make sure all 5 color buttons are equally sized 
+  and perfectly centered below the grid
+- Verify power-up buttons don't overlap grid on 
+  small mobile screens
+- Ensure timer stops exactly at 0:00, not going negative
+
+PERFORMANCE:
+- Add requestAnimationFrame optimization for 
+  the animated menu background
+- Limit menu background animation to 30fps to 
+  save battery on mobile
+- Clear all intervals/timeouts when switching screens
+  to prevent memory leaks
+
+MOBILE OPTIMIZATION:
+- Add <meta name="viewport"> for perfect mobile scaling
+- Add <meta name="apple-mobile-web-app-capable"> 
+  for iOS fullscreen
+- Prevent double-tap zoom on game buttons
+- Add touch-action: manipulation to all buttons
+- Ensure minimum tap target size is 44x44px on all buttons
+- Add safe area insets for iPhone notch/home bar:
+  padding-bottom: env(safe-area-inset-bottom)
+
+APP-LIKE FEEL:
+- Prevent text selection on all elements
+- Prevent context menu on long press
+- Add overscroll-behavior: none to prevent 
+  pull-to-refresh on mobile browsers
+- Set theme-color meta tag to #0F0F1A (dark)
+- Add apple-touch-icon meta (placeholder)
+
+SPLASH SCREEN:
+- Add a 2 second splash screen on first load:
+  Dark background, "Color Fill" title with 
+  loading animation (3 colored dots bouncing)
+  Fades into main menu smoothly
+
+FINAL GAME STATS SCREEN:
+- In settings, add a "My Stats" section showing:
+  Total levels completed
+  Total stars earned  
+  Total moves made
+  Total time played (formatted as Xh Xm)
+  Favorite color (most used color button)
+  Total coins earned lifetime
+  Total ads watched
+
+SOUND EFFECTS (Web Audio API, no files needed):
+- Use Web Audio API to generate simple sounds:
+  Tap sound: short click (50ms)
+  Fill sound: satisfying whoosh (200ms)  
+  Win sound: ascending chime (500ms)
+  Game over sound: descending tone (400ms)
+  Coin earn: bright ping (150ms)
+  Power-up activate: energetic blip (200ms)
+- All sounds respect the sound toggle in settings
+- Generate sounds procedurally (no audio files needed)
+
+Make sure the final game feels smooth, 
+fast and professional on mobile.

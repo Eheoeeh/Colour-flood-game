@@ -21,12 +21,21 @@ export default function MenuScreen({ onPlay, onSettings, progress }: Props) {
   );
 
   useEffect(() => {
-    const id = setInterval(() => {
+    let raf: number;
+    let lastUpdate = 0;
+    const CELL_INTERVAL = 900;
+
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick);
+      if (now - lastUpdate < CELL_INTERVAL) return;
+      lastUpdate = now;
       setCells(prev =>
-        prev.map(c => (Math.random() > 0.91 ? BG_COLORS[Math.floor(Math.random() * BG_COLORS.length)] : c))
+        prev.map(c => (Math.random() > 0.92 ? BG_COLORS[Math.floor(Math.random() * BG_COLORS.length)] : c))
       );
-    }, 850);
-    return () => clearInterval(id);
+    };
+
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   const best = getOverallBest();
