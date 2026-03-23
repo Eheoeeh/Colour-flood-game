@@ -5,6 +5,7 @@ import { loadSettings } from "@/lib/settings";
 import { loadCoins, saveCoins, coinsForStars } from "@/lib/coins";
 import { playSound } from "@/lib/sound";
 import { recordMove, recordTimePlayed, recordCoinsEarned } from "@/lib/gameStats";
+import { isAndroid } from "@/lib/device";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GAP = 1;
@@ -355,7 +356,8 @@ export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete, o
   // Confetti on 3-star win
   useEffect(() => {
     if (!winData || winData.stars < 3) return;
-    const pieces: ConfettiPiece[] = Array.from({ length: 55 }, (_, i) => ({
+    const confettiCount = isAndroid() ? 22 : 55;
+    const pieces: ConfettiPiece[] = Array.from({ length: confettiCount }, (_, i) => ({
       id: i, x: Math.random() * 100,
       color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
       width: 6 + Math.random() * 6, height: 8 + Math.random() * 10,

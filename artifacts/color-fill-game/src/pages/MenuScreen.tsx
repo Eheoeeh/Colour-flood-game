@@ -4,10 +4,16 @@ import { getOverallBest, totalStars, TOTAL_LEVELS } from "@/lib/levels";
 import type { LevelProgress } from "@/lib/levels";
 import { loadCoins } from "@/lib/coins";
 import BannerAd from "@/components/BannerAd";
+import { isAndroid } from "@/lib/device";
 
 const BG_COLORS = ["#E74C3C", "#3498DB", "#2ECC71", "#F1C40F", "#9B59B6", "#E67E22"];
-const COLS = 8;
-const ROWS = 14;
+
+// Reduce grid heavily on Android to prevent CPU/render overload
+const android = isAndroid();
+const COLS = android ? 4 : 8;
+const ROWS = android ? 6 : 14;
+const CELL_INTERVAL = android ? 3500 : 900;
+const CELL_TRANSITION = android ? "none" : "background-color 2.8s ease";
 
 interface Props {
   onPlay: () => void;
@@ -23,14 +29,13 @@ export default function MenuScreen({ onPlay, onSettings, progress }: Props) {
   useEffect(() => {
     let raf: number;
     let lastUpdate = 0;
-    const CELL_INTERVAL = 900;
 
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
       if (now - lastUpdate < CELL_INTERVAL) return;
       lastUpdate = now;
       setCells(prev =>
-        prev.map(c => (Math.random() > 0.92 ? BG_COLORS[Math.floor(Math.random() * BG_COLORS.length)] : c))
+        prev.map(c => (Math.random() > 0.93 ? BG_COLORS[Math.floor(Math.random() * BG_COLORS.length)] : c))
       );
     };
 
@@ -55,7 +60,7 @@ export default function MenuScreen({ onPlay, onSettings, progress }: Props) {
         opacity: 0.2,
       }}>
         {cells.map((c, i) => (
-          <div key={i} style={{ backgroundColor: c, borderRadius: "5px", transition: "background-color 2.8s ease" }} />
+          <div key={i} style={{ backgroundColor: c, borderRadius: "5px", transition: CELL_TRANSITION }} />
         ))}
       </div>
 
@@ -123,21 +128,14 @@ export default function MenuScreen({ onPlay, onSettings, progress }: Props) {
 
         {/* Buttons */}
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "240px" }}>
-          <button onClick={onPlay} style={playBtnS}>
+          <button onClick={onPlay} style={playBtnS} type="button">
             {completed > 0 ? "Continue" : "Play"}
           </button>
-          <button onClick={onSettings} style={settingsBtnS}>
+          <button onClick={onSettings} style={settingsBtnS} type="button">
             Settings
           </button>
         </div>
       </div>
-
-      <style>{`
-        @keyframes menu-float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-6px); }
-        }
-      `}</style>
 
       <BannerAd />
     </div>
@@ -179,6 +177,7 @@ const playBtnS: CSSProperties = {
   letterSpacing: "-0.3px",
   boxShadow: "0 10px 30px rgba(52,152,219,0.45)",
   transition: "transform 0.1s ease, box-shadow 0.1s ease",
+  touchAction: "manipulation",
 };
 
 const settingsBtnS: CSSProperties = {
@@ -190,4 +189,5 @@ const settingsBtnS: CSSProperties = {
   fontSize: "17px",
   fontWeight: 500,
   cursor: "pointer",
+  touchAction: "manipulation",
 };
