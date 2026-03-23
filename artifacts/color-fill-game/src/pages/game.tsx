@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type { CSSProperties } from "react";
+import { TOTAL_LEVELS } from "@/lib/levels";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GAP = 1;
@@ -25,8 +26,22 @@ const DIFFICULTIES: Record<Difficulty, Cfg> = {
   hard:   { label: "Hard",   gridSize: 14, canvasSize: 336, moveLimit: 28, timeLimit: 35, colors: [...BASE_COLORS, HARD_EXTRA] },
 };
 
-// ─── Game logic helpers ────────────────────────────────────────────────────────
-function cellSize(cfg: Cfg) {
+// ─── Props ────────────────────────────────────────────────────────────────────
+interface GameProps {
+  levelNum?: number;
+  onBack?: () => void;
+  onNextLevel?: () => void;
+  onLevelComplete?: (stars: number, score: number) => void;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function levelDifficulty(n: number): Difficulty {
+  if (n <= 10) return "easy";
+  if (n <= 20) return "medium";
+  return "hard";
+}
+
+function cs(cfg: Cfg) {
   return (cfg.canvasSize - (cfg.gridSize - 1) * GAP) / cfg.gridSize;
 }
 
@@ -72,19 +87,18 @@ function fillWaves(board: string[], region: Set<number>, color: string, gs: numb
   return { waves, finalBoard: b, finalRegion };
 }
 
-function greedyEstimate(board: string[], cfg: Cfg): number {
+function greedyEst(board: string[], cfg: Cfg): number {
   let b = [...board], r = new Set<number>([0]), cur = board[0], moves = 0;
-  const total = cfg.gridSize * cfg.gridSize;
-  while (r.size < total && moves < cfg.moveLimit * 2) {
-    let bestColor = "", bestSize = -1;
+  while (r.size < cfg.gridSize * cfg.gridSize && moves < cfg.moveLimit * 2) {
+    let bColor = "", bSize = -1;
     for (const c of cfg.colors) {
       if (c === cur) continue;
       const res = floodFill(b, r, c, cfg.gridSize);
-      if (res.region.size > bestSize) { bestSize = res.region.size; bestColor = c; }
+      if (res.region.size > bSize) { bSize = res.region.size; bColor = c; }
     }
-    if (!bestColor || bestSize <= r.size) break;
-    const res = floodFill(b, r, bestColor, cfg.gridSize);
-    b = res.board; r = res.region; cur = bestColor; moves++;
+    if (!bColor || bSize <= r.size) break;
+    const res = floodFill(b, r, bColor, cfg.gridSize);
+    b = res.board; r = res.region; cur = bColor; moves++;
   }
   return moves;
 }
@@ -93,12 +107,12 @@ function makeBoard(cfg: Cfg): string[] {
   const thresh = cfg.moveLimit * 1.5;
   for (let i = 0; i < 10; i++) {
     const b = randomBoard(cfg);
-    if (greedyEstimate(b, cfg) <= thresh) return b;
+    if (greedyEst(b, cfg) <= thresh) return b;
   }
   return randomBoard(cfg);
 }
 
-function adjacentColors(board: string[], region: Set<number>, gs: number): Set<string> {
+function adjColors(board: string[], region: Set<number>, gs: number): Set<string> {
   const s = new Set<string>();
   for (const i of region) {
     const row = Math.floor(i / gs), col = i % gs;
@@ -116,7 +130,6 @@ function rrect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h
   ctx.fill();
 }
 
-// ─── localStorage helpers ──────────────────────────────────────────────────────
 function getHigh(d: Difficulty): number {
   try { return parseInt(localStorage.getItem(`cf_best_${d}`) || "0", 10) || 0; } catch { return 0; }
 }
@@ -124,33 +137,24 @@ function saveHigh(d: Difficulty, s: number) {
   try { localStorage.setItem(`cf_best_${d}`, String(s)); } catch {}
 }
 
-// ─── Score floater type ────────────────────────────────────────────────────────
-interface Floater { id: number; text: string; x: number; color: string; }
-
-// ─── Win screen data ───────────────────────────────────────────────────────────
-interface WinData {
-  score: number;
-  prevBest: number;
-  isNewBest: boolean;
-  stars: number;
-  timeTaken: number;
-  movesUsed: number;
-}
-
-// ─── Format timer ─────────────────────────────────────────────────────────────
 function fmtTime(s: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+interface Floater { id: number; text: string; x: number; color: string; }
+interface WinData { score: number; prevBest: number; isNewBest: boolean; stars: number; timeTaken: number; movesUsed: number; }
+
 // ═════════════════════════════════════════════════════════════════════════════
-export default function Game() {
+export default function Game({ levelNum, onBack, onNextLevel, onLevelComplete }: GameProps) {
+  const isLevelMode = levelNum != null;
+  const initialDiff: Difficulty = isLevelMode ? levelDifficulty(levelNum) : "medium";
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
-  const waveIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const waveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // React state
-  const [difficulty, setDifficulty] = useState<Difficulty>("medium");
+  const [difficulty, setDifficulty] = useState<Difficulty>(initialDiff);
   const [board, setBoard] = useState<string[]>([]);
   const [region, setRegion] = useState<Set<number>>(new Set([0]));
   const [curColor, setCurColor] = useState<string>("");
@@ -164,10 +168,10 @@ export default function Game() {
   const [floaters, setFloaters] = useState<Floater[]>([]);
   const [winData, setWinData] = useState<WinData | null>(null);
 
-  // Canvas / animation refs (bypass React for 60fps drawing)
+  // Canvas refs (no React re-render needed)
   const boardR = useRef<string[]>([]);
   const regionR = useRef<Set<number>>(new Set([0]));
-  const diffR = useRef<Difficulty>("medium");
+  const diffR = useRef<Difficulty>(initialDiff);
   const isAnimR = useRef(false);
   const pulseR = useRef<Map<number, number>>(new Map());
   const timeLeftR = useRef(45);
@@ -177,24 +181,21 @@ export default function Game() {
 
   const cfg = DIFFICULTIES[difficulty];
 
-  // ── Timer helpers ────────────────────────────────────────────────────────────
   const clearTimer = useCallback(() => {
-    if (timerIntervalRef.current) { clearInterval(timerIntervalRef.current); timerIntervalRef.current = null; }
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
   }, []);
 
-  // ── Floater helper ───────────────────────────────────────────────────────────
   const addFloater = useCallback((text: string, xFrac: number, color = "#F1C40F") => {
     const id = ++floaterIdR.current;
     const c = DIFFICULTIES[diffR.current];
-    const x = Math.max(10, Math.min(c.canvasSize - 60, xFrac * c.canvasSize));
+    const x = Math.max(10, Math.min(c.canvasSize - 70, xFrac * c.canvasSize));
     setFloaters(prev => [...prev, { id, text, x, color }]);
     setTimeout(() => setFloaters(prev => prev.filter(f => f.id !== id)), 1400);
   }, []);
 
-  // ── startGame ────────────────────────────────────────────────────────────────
   const startGame = useCallback((diff: Difficulty) => {
     clearTimer();
-    if (waveIntervalRef.current) { clearInterval(waveIntervalRef.current); waveIntervalRef.current = null; }
+    if (waveRef.current) { clearInterval(waveRef.current); waveRef.current = null; }
     isAnimR.current = false;
     pulseR.current.clear();
     comboR.current = 0;
@@ -220,21 +221,21 @@ export default function Game() {
     setFloaters([]);
     setWinData(null);
 
-    timerIntervalRef.current = setInterval(() => {
+    timerRef.current = setInterval(() => {
       timeLeftR.current = Math.max(0, timeLeftR.current - 1);
       setTimeLeft(timeLeftR.current);
       if (timeLeftR.current <= 0) {
-        clearInterval(timerIntervalRef.current!);
-        timerIntervalRef.current = null;
+        clearInterval(timerRef.current!); timerRef.current = null;
         setGameOver(true);
       }
     }, 1000);
   }, [clearTimer]);
 
-  useEffect(() => { startGame("medium"); }, [startGame]);
+  // Initialize on mount
+  useEffect(() => { startGame(initialDiff); }, [startGame]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { clearTimer(); }, [clearTimer]);
 
-  // Sync refs from state
+  // Sync refs
   useEffect(() => { boardR.current = board; }, [board]);
   useEffect(() => { regionR.current = region; }, [region]);
   useEffect(() => { diffR.current = difficulty; }, [difficulty]);
@@ -245,21 +246,20 @@ export default function Game() {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
     const c = DIFFICULTIES[diffR.current];
-    const cs = cellSize(c);
+    const cellSz = cs(c);
     const gs = c.gridSize;
     const b = boardR.current;
     const r = regionR.current;
     const now = performance.now();
-    const radius = Math.max(1.5, cs * 0.07);
+    const radius = Math.max(1.5, cellSz * 0.07);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     for (let row = 0; row < gs; row++) {
       for (let col = 0; col < gs; col++) {
         const idx = row * gs + col;
-        const bx = col * (cs + GAP), by = row * (cs + GAP);
+        const bx = col * (cellSz + GAP), by = row * (cellSz + GAP);
         const pt = pulseR.current.get(idx);
         ctx.fillStyle = b[idx];
         if (pt !== undefined) {
@@ -267,17 +267,17 @@ export default function Game() {
           if (elapsed < PULSE_MS) {
             const scale = 1 + 0.15 * Math.sin(Math.PI * (elapsed / PULSE_MS));
             ctx.save();
-            ctx.translate(bx + cs / 2, by + cs / 2);
+            ctx.translate(bx + cellSz / 2, by + cellSz / 2);
             ctx.scale(scale, scale);
-            ctx.translate(-(bx + cs / 2), -(by + cs / 2));
-            rrect(ctx, bx, by, cs, cs, radius);
+            ctx.translate(-(bx + cellSz / 2), -(by + cellSz / 2));
+            rrect(ctx, bx, by, cellSz, cellSz, radius);
             ctx.restore();
           } else {
             pulseR.current.delete(idx);
-            rrect(ctx, bx, by, cs, cs, radius);
+            rrect(ctx, bx, by, cellSz, cellSz, radius);
           }
         } else {
-          rrect(ctx, bx, by, cs, cs, radius);
+          rrect(ctx, bx, by, cellSz, cellSz, radius);
         }
       }
     }
@@ -291,11 +291,11 @@ export default function Game() {
       ctx.lineCap = "butt";
       for (const idx of r) {
         const row = Math.floor(idx / gs), col = idx % gs;
-        const x = col * (cs + GAP), y = row * (cs + GAP);
-        if (row === 0 || !r.has(idx - gs))          { ctx.beginPath(); ctx.moveTo(x, y + .5);          ctx.lineTo(x + cs, y + .5);          ctx.stroke(); }
-        if (row === gs - 1 || !r.has(idx + gs))     { ctx.beginPath(); ctx.moveTo(x, y + cs - .5);     ctx.lineTo(x + cs, y + cs - .5);     ctx.stroke(); }
-        if (col === 0 || !r.has(idx - 1))           { ctx.beginPath(); ctx.moveTo(x + .5, y);          ctx.lineTo(x + .5, y + cs);          ctx.stroke(); }
-        if (col === gs - 1 || !r.has(idx + 1))      { ctx.beginPath(); ctx.moveTo(x + cs - .5, y);     ctx.lineTo(x + cs - .5, y + cs);     ctx.stroke(); }
+        const x = col * (cellSz + GAP), y = row * (cellSz + GAP);
+        if (row === 0 || !r.has(idx - gs))          { ctx.beginPath(); ctx.moveTo(x, y + .5);           ctx.lineTo(x + cellSz, y + .5);           ctx.stroke(); }
+        if (row === gs - 1 || !r.has(idx + gs))     { ctx.beginPath(); ctx.moveTo(x, y + cellSz - .5);  ctx.lineTo(x + cellSz, y + cellSz - .5); ctx.stroke(); }
+        if (col === 0 || !r.has(idx - 1))           { ctx.beginPath(); ctx.moveTo(x + .5, y);           ctx.lineTo(x + .5, y + cellSz);          ctx.stroke(); }
+        if (col === gs - 1 || !r.has(idx + 1))      { ctx.beginPath(); ctx.moveTo(x + cellSz - .5, y);  ctx.lineTo(x + cellSz - .5, y + cellSz); ctx.stroke(); }
       }
       ctx.restore();
     }
@@ -318,7 +318,6 @@ export default function Game() {
     const totalCells = c.gridSize * c.gridSize;
     const remaining = totalCells - region.size;
 
-    // Score calculation
     const base = 100;
     const isPerfect = remaining > 0 && gained > 0 && (gained / remaining) > 0.1;
     const perfectBonus = isPerfect ? 250 : 0;
@@ -326,24 +325,16 @@ export default function Game() {
     if (isPerfect) {
       comboR.current++;
       if (comboR.current >= 3) { comboBonus = 500; comboR.current = 0; }
-    } else {
-      comboR.current = 0;
-    }
+    } else { comboR.current = 0; }
     const moveScore = base + perfectBonus + comboBonus;
     scoreR.current += moveScore;
     setScore(scoreR.current);
 
-    // Floaters
     const xPos = 0.2 + Math.random() * 0.55;
-    if (comboBonus > 0) {
-      addFloater(`COMBO! +${comboBonus}`, 0.35, "#E67E22");
-    } else if (isPerfect) {
-      addFloater(`+${moveScore} ✦`, xPos, "#F1C40F");
-    } else {
-      addFloater(`+${base}`, xPos, "#9999BB");
-    }
+    if (comboBonus > 0) addFloater(`COMBO! +${comboBonus}`, 0.35, "#E67E22");
+    else if (isPerfect) addFloater(`+${moveScore} ✦`, xPos, "#F1C40F");
+    else addFloater(`+${base}`, xPos, "#9999BB");
 
-    // Update canvas refs immediately
     const visualBoard = [...board];
     for (const i of region) visualBoard[i] = color;
     boardR.current = visualBoard;
@@ -356,14 +347,13 @@ export default function Game() {
       return;
     }
 
-    isAnimR.current = true;
-    setIsAnim(true);
+    isAnimR.current = true; setIsAnim(true);
     const animB = [...visualBoard], animR = new Set(region);
     let wi = 0;
 
-    waveIntervalRef.current = setInterval(() => {
+    waveRef.current = setInterval(() => {
       if (wi >= waves.length) {
-        clearInterval(waveIntervalRef.current!); waveIntervalRef.current = null;
+        clearInterval(waveRef.current!); waveRef.current = null;
         isAnimR.current = false;
         boardR.current = finalBoard; regionR.current = finalRegion;
         setBoard(finalBoard); setRegion(finalRegion); setCurColor(color); setMoves(newMoves);
@@ -376,28 +366,25 @@ export default function Game() {
           scoreR.current = totalScore;
           setScore(totalScore);
           if (speedBonus > 0) addFloater(`+${speedBonus} SPEED!`, 0.3, "#3498DB");
-
           clearTimer();
 
           const movesLeft = c.moveLimit - newMoves;
-          const timeRatio = tLeft / c.timeLimit;
-          const movesRatio = movesLeft / c.moveLimit;
-          const stars = (movesRatio > 0.4 && timeRatio > 0.4) ? 3 : (movesRatio > 0.2 || timeRatio > 0.2) ? 2 : 1;
+          const tRatio = tLeft / c.timeLimit;
+          const mRatio = movesLeft / c.moveLimit;
+          const stars = (mRatio > 0.4 && tRatio > 0.4) ? 3 : (mRatio > 0.2 || tRatio > 0.2) ? 2 : 1;
 
           const prevBest = getHigh(diffR.current);
           const isNewBest = totalScore > prevBest;
           if (isNewBest) saveHigh(diffR.current, totalScore);
           setHighScore(isNewBest ? totalScore : prevBest);
 
-          setWinData({
-            score: totalScore,
-            prevBest,
-            isNewBest,
-            stars,
-            timeTaken: c.timeLimit - tLeft,
-            movesUsed: newMoves,
-          });
+          const wd: WinData = {
+            score: totalScore, prevBest, isNewBest, stars,
+            timeTaken: c.timeLimit - tLeft, movesUsed: newMoves,
+          };
+          setWinData(wd);
           setWon(true);
+          onLevelComplete?.(stars, totalScore);
         } else if (newMoves >= c.moveLimit) {
           clearTimer(); setGameOver(true);
         }
@@ -408,20 +395,13 @@ export default function Game() {
       boardR.current = [...animB]; regionR.current = new Set(animR);
       wi++;
     }, WAVE_MS);
-  }, [board, region, curColor, won, gameOver, moves, difficulty, clearTimer, addFloater]);
+  }, [board, region, curColor, won, gameOver, moves, difficulty, clearTimer, addFloater, onLevelComplete]);
 
   const changeDiff = useCallback((d: Difficulty) => { setDifficulty(d); startGame(d); }, [startGame]);
-  const restart = useCallback(() => startGame(difficulty), [difficulty, startGame]);
-  const nextLevel = useCallback(() => {
-    const order: Difficulty[] = ["easy", "medium", "hard"];
-    const idx = order.indexOf(difficulty);
-    const next = order[Math.min(idx + 1, order.length - 1)];
-    setDifficulty(next);
-    startGame(next);
-  }, [difficulty, startGame]);
+  const restart = useCallback(() => startGame(isLevelMode ? levelDifficulty(levelNum!) : difficulty), [startGame, isLevelMode, levelNum, difficulty]);
 
-  // ── Derived values ────────────────────────────────────────────────────────────
-  const gains = useMemo(() => {
+  // Computed values
+  const captureGains = useMemo(() => {
     const g: Record<string, number> = {};
     if (isAnim || !board.length) return g;
     for (const c of cfg.colors) {
@@ -431,7 +411,7 @@ export default function Game() {
     return g;
   }, [board, region, curColor, cfg, isAnim]);
 
-  const adjColors = useMemo(() => adjacentColors(board, region, cfg.gridSize), [board, region, cfg.gridSize]);
+  const adjacent = useMemo(() => adjColors(board, region, cfg.gridSize), [board, region, cfg.gridSize]);
 
   const total = cfg.gridSize * cfg.gridSize;
   const coverage = board.length ? Math.round((region.size / total) * 100) : 0;
@@ -449,36 +429,54 @@ export default function Game() {
   return (
     <div style={rootStyle}>
       <div style={colStyle}>
-        {/* Title */}
-        <h1 style={{ color: "#E8E8F0", fontSize: "20px", fontWeight: 700, letterSpacing: "-0.5px", margin: 0 }}>
-          Color Fill
-        </h1>
 
-        {/* Difficulty */}
-        <div style={{ display: "flex", gap: "8px" }}>
-          {(["easy", "medium", "hard"] as Difficulty[]).map((d) => {
-            const active = d === difficulty;
-            return (
-              <button key={d} onClick={() => changeDiff(d)} style={{
-                backgroundColor: active ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.04)",
-                color: active ? "#E8E8F0" : "#6666AA",
-                border: active ? "1px solid rgba(255,255,255,0.22)" : "1px solid rgba(255,255,255,0.06)",
-                borderRadius: "8px", padding: "7px 16px", fontSize: "13px",
-                fontWeight: active ? 600 : 400, cursor: "pointer", transition: "all 0.15s ease",
-              }}>
-                {DIFFICULTIES[d].label}
-              </button>
-            );
-          })}
+        {/* Top bar: Back + Title + Level indicator */}
+        <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          {isLevelMode ? (
+            <button onClick={onBack} style={backBtnStyle}>← Levels</button>
+          ) : <div style={{ width: "60px" }} />}
+
+          <h1 style={{ color: "#E8E8F0", fontSize: "20px", fontWeight: 700, letterSpacing: "-0.5px", margin: 0 }}>
+            Color Fill
+          </h1>
+
+          {isLevelMode ? (
+            <span style={{ fontSize: "11px", color: "#5555AA", minWidth: "60px", textAlign: "right" }}>
+              {levelNum} of {TOTAL_LEVELS}
+            </span>
+          ) : <div style={{ width: "60px" }} />}
         </div>
 
-        {/* Timer + Score row */}
+        {/* Level label OR difficulty selector */}
+        {isLevelMode ? (
+          <div style={{ color: "#8888CC", fontSize: "13px", fontWeight: 600, letterSpacing: "0.3px", marginTop: "-4px" }}>
+            Level {levelNum}
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: "8px" }}>
+            {(["easy", "medium", "hard"] as Difficulty[]).map((d) => {
+              const active = d === difficulty;
+              return (
+                <button key={d} onClick={() => changeDiff(d)} style={{
+                  backgroundColor: active ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.04)",
+                  color: active ? "#E8E8F0" : "#6666AA",
+                  border: active ? "1px solid rgba(255,255,255,0.22)" : "1px solid rgba(255,255,255,0.06)",
+                  borderRadius: "8px", padding: "7px 16px", fontSize: "13px",
+                  fontWeight: active ? 600 : 400, cursor: "pointer", transition: "all 0.15s ease",
+                }}>
+                  {DIFFICULTIES[d].label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Timer + Score */}
         <div style={{ width: canvasSz, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
             <div style={{
               fontSize: "22px", fontWeight: 800, letterSpacing: "-1px", fontVariantNumeric: "tabular-nums",
-              color: timeRed ? "#E74C3C" : "#E8E8F0",
-              transition: "color 0.3s ease",
+              color: timeRed ? "#E74C3C" : "#E8E8F0", transition: "color 0.3s ease",
             }}>
               {fmtTime(timeLeft)}
             </div>
@@ -495,15 +493,13 @@ export default function Game() {
           </div>
         </div>
 
-        {/* Moves + progress */}
+        {/* Moves + coverage bar */}
         <div style={{ width: canvasSz, display: "flex", flexDirection: "column", gap: "5px" }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span style={{ fontSize: "12px", color: movesRed ? "#E74C3C" : "#6666AA", fontWeight: movesRed ? 700 : 400, transition: "color 0.2s" }}>
               Moves: {moves} / {cfg.moveLimit}
             </span>
-            <span style={{ fontSize: "12px", color: "#6666AA" }}>
-              {coverage}% captured
-            </span>
+            <span style={{ fontSize: "12px", color: "#6666AA" }}>{coverage}% captured</span>
           </div>
           <div style={{ width: "100%", height: "5px", borderRadius: "3px", backgroundColor: "rgba(255,255,255,0.07)", overflow: "hidden" }}>
             <div style={{
@@ -532,15 +528,9 @@ export default function Game() {
           {/* Score floaters */}
           {floaters.map(f => (
             <div key={f.id} className="floater" style={{
-              position: "absolute",
-              left: f.x,
-              top: "35%",
-              color: f.color,
-              fontSize: "13px",
-              fontWeight: 800,
-              letterSpacing: "-0.3px",
-              pointerEvents: "none",
-              whiteSpace: "nowrap",
+              position: "absolute", left: f.x, top: "35%",
+              color: f.color, fontSize: "13px", fontWeight: 800, letterSpacing: "-0.3px",
+              pointerEvents: "none", whiteSpace: "nowrap",
               textShadow: `0 0 8px ${f.color}`,
               fontFamily: "'Inter', -apple-system, sans-serif",
             }}>
@@ -553,40 +543,35 @@ export default function Game() {
             <div style={overlayS}>
               <div style={{ textAlign: "center" }}>
                 {/* Stars */}
-                <div style={{ display: "flex", gap: "4px", justifyContent: "center", marginBottom: "10px" }}>
+                <div style={{ display: "flex", gap: "4px", justifyContent: "center", marginBottom: "8px" }}>
                   {[1, 2, 3].map(i => (
-                    <span key={i} className={`star star-${i}`} style={{
-                      fontSize: "28px",
+                    <span key={i} className="star" style={{
+                      fontSize: "30px", display: "inline-block",
                       opacity: i <= winData.stars ? 1 : 0.2,
-                      display: "inline-block",
                       animationDelay: `${(i - 1) * 0.18}s`,
+                      filter: i <= winData.stars ? "drop-shadow(0 0 6px #F1C40F)" : "none",
                     }}>⭐</span>
                   ))}
                 </div>
 
-                <div style={{ color: "#E8E8F0", fontSize: "22px", fontWeight: 800, letterSpacing: "-0.5px" }}>
-                  You Win!
+                <div style={{ color: "#E8E8F0", fontSize: "20px", fontWeight: 800, letterSpacing: "-0.5px" }}>
+                  {isLevelMode ? `Level ${levelNum} Complete!` : "You Win!"}
                 </div>
 
                 {winData.isNewBest && (
                   <div style={{
-                    display: "inline-block",
-                    marginTop: "6px",
-                    backgroundColor: "#F1C40F",
-                    color: "#0F0F1A",
-                    fontSize: "10px", fontWeight: 800,
-                    borderRadius: "99px", padding: "3px 10px",
-                    letterSpacing: "0.5px",
+                    display: "inline-block", marginTop: "5px",
+                    backgroundColor: "#F1C40F", color: "#0F0F1A",
+                    fontSize: "10px", fontWeight: 800, borderRadius: "99px",
+                    padding: "3px 10px", letterSpacing: "0.5px",
                   }}>
                     ✦ NEW BEST!
                   </div>
                 )}
 
-                <div style={{ marginTop: "10px", display: "flex", gap: "20px", justifyContent: "center" }}>
+                <div style={{ marginTop: "8px", display: "flex", gap: "18px", justifyContent: "center" }}>
                   <div style={{ textAlign: "center" }}>
-                    <div style={{ color: "#F1C40F", fontSize: "20px", fontWeight: 800 }}>
-                      {winData.score.toLocaleString()}
-                    </div>
+                    <div style={{ color: "#F1C40F", fontSize: "20px", fontWeight: 800 }}>{winData.score.toLocaleString()}</div>
                     <div style={{ color: "#5555AA", fontSize: "10px" }}>Score</div>
                   </div>
                   <div style={{ textAlign: "center" }}>
@@ -597,16 +582,19 @@ export default function Game() {
                   </div>
                 </div>
 
-                <div style={{ marginTop: "8px", color: "#5555AA", fontSize: "11px", display: "flex", gap: "14px", justifyContent: "center" }}>
+                <div style={{ marginTop: "6px", color: "#5555AA", fontSize: "11px", display: "flex", gap: "14px", justifyContent: "center" }}>
                   <span>⏱ {winData.timeTaken}s</span>
                   <span>🎯 {winData.movesUsed} moves</span>
                 </div>
               </div>
 
-              <div style={{ display: "flex", gap: "10px" }}>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "center" }}>
                 <button onClick={restart} style={btnPrimary("#3498DB")}>Play Again</button>
-                {difficulty !== "hard" && (
-                  <button onClick={nextLevel} style={btnPrimary("#2ECC71")}>Next Level →</button>
+                {isLevelMode && levelNum! < TOTAL_LEVELS && (
+                  <button onClick={onNextLevel} style={btnPrimary("#2ECC71")}>Next →</button>
+                )}
+                {isLevelMode && (
+                  <button onClick={onBack} style={btnSecondary}>Levels</button>
                 )}
               </div>
             </div>
@@ -616,27 +604,27 @@ export default function Game() {
           {gameOver && (
             <div style={overlayS}>
               <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: "40px", lineHeight: 1, marginBottom: "6px" }}>😢</div>
-                <div style={{ color: "#E8E8F0", fontSize: "22px", fontWeight: 800, letterSpacing: "-0.5px" }}>
-                  Game Over!
-                </div>
-                <div style={{ color: "#8888AA", fontSize: "13px", marginTop: "4px" }}>
-                  {goMsg}
-                </div>
-                <div style={{ marginTop: "10px", color: "#F1C40F", fontSize: "18px", fontWeight: 700 }}>
+                <div style={{ fontSize: "38px", lineHeight: 1, marginBottom: "6px" }}>😢</div>
+                <div style={{ color: "#E8E8F0", fontSize: "20px", fontWeight: 800, letterSpacing: "-0.5px" }}>Game Over!</div>
+                <div style={{ color: "#8888AA", fontSize: "13px", marginTop: "4px" }}>{goMsg}</div>
+                <div style={{ marginTop: "8px", color: "#F1C40F", fontSize: "18px", fontWeight: 700 }}>
                   {score.toLocaleString()} pts
                 </div>
-                <div style={{ color: "#5555AA", fontSize: "11px", marginTop: "3px" }}>
+                <div style={{ color: "#5555AA", fontSize: "11px", marginTop: "2px" }}>
                   {coverage}% captured · {moves} moves
                 </div>
               </div>
-              <div style={{ display: "flex", gap: "10px" }}>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", justifyContent: "center" }}>
                 <button onClick={restart} style={btnPrimary("#E74C3C")}>Try Again</button>
-                <button onClick={() => {
-                  const order: Difficulty[] = ["easy", "medium", "hard"];
-                  const i = order.indexOf(difficulty);
-                  changeDiff(order[Math.max(0, i - 1)]);
-                }} style={btnSecondary}>Easier</button>
+                {isLevelMode ? (
+                  <button onClick={onBack} style={btnSecondary}>Levels</button>
+                ) : (
+                  <button onClick={() => {
+                    const order: Difficulty[] = ["easy", "medium", "hard"];
+                    const i = order.indexOf(difficulty);
+                    changeDiff(order[Math.max(0, i - 1)]);
+                  }} style={btnSecondary}>Easier</button>
+                )}
               </div>
             </div>
           )}
@@ -646,10 +634,10 @@ export default function Game() {
         <div style={{ display: "flex", gap: difficulty === "hard" ? "10px" : "14px", alignItems: "center", justifyContent: "center" }}>
           {cfg.colors.map((color) => {
             const active = color === curColor;
-            const gain = gains[color] ?? 0;
+            const gain = captureGains[color] ?? 0;
             const isZero = !active && gain === 0 && !isAnim;
             const showBadge = !active && gain > 5 && !isAnim;
-            const isHint = !active && adjColors.has(color);
+            const isHint = !active && adjacent.has(color);
             const sz = active ? btnSz + 7 : btnSz;
             return (
               <div key={color} style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -721,7 +709,7 @@ export default function Game() {
   );
 }
 
-// ─── Styles ────────────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const rootStyle: CSSProperties = {
   minHeight: "100dvh",
   backgroundColor: "#0F0F1A",
@@ -747,12 +735,23 @@ const overlayS: CSSProperties = {
   gap: "16px", backdropFilter: "blur(8px)",
 };
 
+const backBtnStyle: CSSProperties = {
+  backgroundColor: "transparent",
+  color: "#8888CC",
+  border: "none",
+  padding: "4px 0",
+  fontSize: "13px",
+  fontWeight: 600,
+  cursor: "pointer",
+  minWidth: "60px",
+};
+
 function btnPrimary(bg: string): CSSProperties {
-  return { backgroundColor: bg, color: "#fff", border: "none", borderRadius: "10px", padding: "11px 22px", fontSize: "14px", fontWeight: 600, cursor: "pointer" };
+  return { backgroundColor: bg, color: "#fff", border: "none", borderRadius: "10px", padding: "10px 20px", fontSize: "14px", fontWeight: 600, cursor: "pointer" };
 }
 
 const btnSecondary: CSSProperties = {
   backgroundColor: "rgba(255,255,255,0.08)", color: "#B8B8CC",
   border: "1px solid rgba(255,255,255,0.12)", borderRadius: "10px",
-  padding: "11px 20px", fontSize: "14px", fontWeight: 500, cursor: "pointer",
+  padding: "10px 18px", fontSize: "14px", fontWeight: 500, cursor: "pointer",
 };

@@ -1,32 +1,67 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
+import { useState } from "react";
+import MenuScreen from "@/pages/MenuScreen";
+import LevelSelect from "@/pages/LevelSelect";
 import Game from "@/pages/game";
+import {
+  loadProgress,
+  saveProgress,
+  updateLevelProgress,
+  saveOverallBest,
+  TOTAL_LEVELS,
+} from "@/lib/levels";
+import type { LevelProgress } from "@/lib/levels";
 
-const queryClient = new QueryClient();
+type Screen = "menu" | "levelselect" | "game";
 
-function Router() {
+export default function App() {
+  const [screen, setScreen] = useState<Screen>("menu");
+  const [currentLevel, setCurrentLevel] = useState(1);
+  const [progress, setProgress] = useState<LevelProgress[]>(loadProgress);
+
+  const handleSelectLevel = (n: number) => {
+    setCurrentLevel(n);
+    setScreen("game");
+  };
+
+  const handleLevelComplete = (stars: number, score: number) => {
+    const next = updateLevelProgress(currentLevel, stars, progress);
+    setProgress(next);
+    saveProgress(next);
+    saveOverallBest(score);
+  };
+
+  const handleNextLevel = () => {
+    if (currentLevel < TOTAL_LEVELS) {
+      setCurrentLevel(prev => prev + 1);
+    } else {
+      setScreen("levelselect");
+    }
+  };
+
   return (
-    <Switch>
-      <Route path="/" component={Game} />
-      <Route component={NotFound} />
-    </Switch>
+    <>
+      {screen === "menu" && (
+        <MenuScreen
+          onPlay={() => setScreen("levelselect")}
+          progress={progress}
+        />
+      )}
+      {screen === "levelselect" && (
+        <LevelSelect
+          progress={progress}
+          onSelectLevel={handleSelectLevel}
+          onBack={() => setScreen("menu")}
+        />
+      )}
+      {screen === "game" && (
+        <Game
+          key={currentLevel}
+          levelNum={currentLevel}
+          onBack={() => setScreen("levelselect")}
+          onNextLevel={handleNextLevel}
+          onLevelComplete={handleLevelComplete}
+        />
+      )}
+    </>
   );
 }
-
-function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
-  );
-}
-
-export default App;
